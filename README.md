@@ -79,6 +79,10 @@ pip install -r requirements.txt
 # 3. 配置环境变量
 cp .env.example .env
 # 编辑 .env 填入你的 API 密钥和邮箱凭据
+
+# 4. 忽略 Excel 本地变更（避免运行时数据被 Git 追踪）
+git update-index --skip-worktree data/荣誉活动立项汇总表.xlsx
+git update-index --skip-worktree data/志愿者荣誉时数-志愿者编号导入模板.xlsx
 ```
 
 ### 配置
@@ -225,12 +229,4 @@ python tests/test_tool_registry.py
 ## 注意事项
 
 1. **邮件不会自动发送** — 系统仅将回复保存到 Gmail 草稿箱，需人工登录审核后发送
-2. **数据表格请勿手动修改格式** — 表头行和标题行位置与代码中的 `header_row` 参数绑定
-3. **.env 文件包含敏感信息**，已加入 `.gitignore`，切勿提交到 Git
-4. `data/tasks/` 目录下的任务记录包含邮件内容，已在 `.gitignore` 中排除
-
----
-
-## 许可
-
-本项目仅供学习参考。
+2. **数据表格请勿手动修改格式** — 表头行和标题行位置与代码中的 `header_row` 
