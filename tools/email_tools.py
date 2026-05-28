@@ -1,0 +1,451 @@
+"""
+邮件处理工具
+============
+封装对学生组织公邮的读取和回复操作。
+支持附件下载与保存。
+"""
+
+from __future__ import annotations
+
+import email
+import imaplib
+import json
+import logging
+import os
+import smtplib
+import time
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from email.mime.text import MIMEText
+from email.header import decode_header
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+from typing import Any, Optional
+from email import message_from_bytes
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EmailMessage:
+    """一封邮件的结构化表示"""
+    id: str
+    subject: str
+    sender: str
+    recipient: str
+    date: str
+    body_text: str
+    body_html: str = ""
+    attachments: list[dict] = field(default_factory=list)
+    raw_size: int = 0
+
+
+class EmailTools:
+    """
+    邮件工具集。
+    提供 IMAP 读取和 SMTP 回复功能。
+    注意：实际使用时需要配置邮件服务器地址和凭证。
+    """
+
+    def __init__(
+        self,
+        imap_server: str = "",
+        imap_port: int = 993,
+        smtp_server: str = "",
+        smtp_port: int = 587,
+        email_account: str = "",
+        email_password: str = "",
+        attachment_dir: str = "",
+    ):
+        self.imap_server = imap_server or os.getenv("IMAP_SERVER", "")
+        self.imap_port = int(os.getenv("IMAP_PORT", str(imap_port)))
+        self.smtp_server = smtp_server or os.getenv("SMTP_SERVER", "")
+        self.smtp_port = int(os.getenv("SMTP_PORT", str(smtp_port)))
+        self.email_account = email_account or os.getenv("EMAIL_ACCOUNT", "")
+        self.email_password = email_password or os.getenv("EMAIL_PASSWORD", "")
+        self.attachment_dir = attachment_dir or os.getenv(
+            "ATTACHMENT_DIR",
+            os.path.join(os.getcwd(), "data", "attachments"),
+        )
+        os.makedirs(self.attachment_dir, exist_ok=True)
+
+        if not all([self.imap_server, self.smtp_server, self.email_account, self.email_password]):
+            logger.warning(
+                "邮件服务器配置不完整。请设置以下环境变量：\n"
+                "  IMAP_SERVER, SMTP_SERVER, EMAIL_ACCOUNT, EMAIL_PASSWORD\n"
+                "或在初始化 EmailTools 时传入对应参数。"
+            )
+
+    def read_unread(self, limit: int = 10) -> str:
+        """
+        读取收件箱中未处理的邮件，并保存附件到本地。
+
+        Args:
+            limit: 最大读取封数
+
+        Returns:
+            str: 邮件列表的JSON字符串，含附件信息
+        """
+        if not self.imap_server:
+            return json.dumps({
+                "status": "error",
+                "message": "IMAP服务器未配置，无法读取邮件",
+                "emails": []
+            }, ensure_ascii=False)
+
+        try:
+            # 连接IMAP
+            mail = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
+            mail.login(self.email_account, self.email_password)
+            mail.select("INBOX")
+
+            # 搜索未读邮件
+            status, messages = mail.search(None, "UNSEEN")
+            if status != "OK":
+                return json.dumps({
+                    "status": "error",
+                    "message": "搜索邮件失败",
+                    "emails": []
+                }, ensure_ascii=False)
+
+            email_ids = messages[0].split()
+            if not email_ids:
+                # 没有未读邮件时，改为读取最近几封邮件（供测试用）
+                status, all_msgs = mail.search(None, "ALL")
+                if status == "OK":
+                    all_ids = all_msgs[0].split()
+                    email_ids = all_ids[-limit:] if all_ids else []
+                    source = "recent"
+                else:
+                    mail.logout()
+                    return json.dumps({
+                        "status": "success",
+                        "total": 0,
+                        "emails": [],
+                        "message": "收件箱中没有邮件"
+                    }, ensure_ascii=False)
+            else:
+                source = "unread"
+                email_ids = email_ids[-limit:]
+            emails = []
+
+            for eid in email_ids:
+                status, data = mail.fetch(eid, "(RFC822)")
+                if status != "OK":
+                    continue
+
+                raw_email = data[0][1]
+                msg = message_from_bytes(raw_email)
+
+                # 解码主题
+                subject = ""
+                raw_subject = msg.get("Subject", "")
+                if raw_subject:
+                    decoded_parts = decode_header(raw_subject)
+                    subject = "".join(
+                        part.decode(charset or "utf-8") if isinstance(part, bytes) else part
+                        for part, charset in decoded_parts
+                    )
+
+                # 提取正文
+                body_text = self._get_email_body(msg)
+
+                # 提取附件
+                attachments = self._extract_attachments(msg, eid)
+
+                email_msg = EmailMessage(
+                    id=eid.decode() if isinstance(eid, bytes) else str(eid),
+                    subject=subject or "(无主题)",
+                    sender=msg.get("From", ""),
+                    recipient=msg.get("To", ""),
+                    date=str(parsedate_to_datetime(msg.get("Date")) if msg.get("Date") else ""),
+                    body_text=body_text,
+                    raw_size=len(raw_email),
+                )
+                emails.append({
+                    "id": email_msg.id,
+                    "subject": email_msg.subject,
+                    "from": email_msg.sender,
+                    "date": email_msg.date,
+                    "body_preview": email_msg.body_text[:500],
+                    "body_length": len(email_msg.body_text),
+                    "attachments": attachments,
+                    "has_attachments": len(attachments) > 0,
+                })
+
+            mail.logout()
+
+            label = "最近" if source == "recent" else "未读"
+            result = {
+                "status": "success",
+                "total": len(emails),
+                "emails": emails,
+                "source": source,
+                "message": f"成功读取 {len(emails)} 封{label}邮件"
+            }
+            return json.dumps(result, ensure_ascii=False)
+
+        except imaplib.IMAP4.error as e:
+            error_msg = f"IMAP连接失败: {e}"
+            logger.error(error_msg)
+            return json.dumps({
+                "status": "error",
+                "message": error_msg,
+                "emails": []
+            }, ensure_ascii=False)
+
+    def reply_draft(self, mail_id: str, subject: str, content: str) -> str:
+        """
+        将回复邮件保存到 Gmail 草稿箱 [Gmail]/Drafts，供人工审核后发送。
+
+        Args:
+            mail_id: 原邮件ID
+            subject: 回复主题
+            content: 回复正文
+
+        Returns:
+            str: 操作结果
+        """
+        if not self.imap_server:
+            return json.dumps({
+                "status": "error",
+                "message": "IMAP服务器未配置，无法保存草稿"
+            }, ensure_ascii=False)
+
+        # 先构建回复内容，确保后续各分支都能使用
+        reply_subject = f"Re: {subject}" if not subject.startswith("Re:") else subject
+        mime_msg = MIMEText(content, "plain", "utf-8")
+        mime_msg["Subject"] = reply_subject
+        mime_msg["From"] = self.email_account
+        mime_msg["In-Reply-To"] = mail_id
+
+        try:
+            # 1. 先从收件箱找到原邮件，获取发件人地址
+            conn = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
+            conn.login(self.email_account, self.email_password)
+            conn.select("INBOX")
+
+            original_sender = ""
+            status, data = conn.fetch(mail_id.encode(), "(RFC822)")
+            if status == "OK":
+                msg = message_from_bytes(data[0][1])
+                original_sender = msg.get("Reply-To", "") or msg.get("From", "")
+            mime_msg["To"] = original_sender
+
+            # 2. 保存到 Gmail 草稿箱
+            draft_folder = "[Gmail]/Drafts"
+            conn.select(draft_folder)
+            append_status = conn.append(
+                draft_folder,
+                "\\Draft",
+                None,
+                mime_msg.as_bytes(),
+            )
+
+            conn.logout()
+
+            if append_status[0] == "OK":
+                return json.dumps({
+                    "status": "success",
+                    "mail_id": mail_id,
+                    "subject": reply_subject,
+                    "to": original_sender,
+                    "draft_status": "saved_to_drafts",
+                    "message": f"回复草稿已保存到草稿箱，请登录 Gmail 审核后发送",
+                }, ensure_ascii=False)
+            else:
+                return json.dumps({
+                    "status": "error",
+                    "message": f"保存草稿失败: {append_status[1]}",
+                }, ensure_ascii=False)
+
+        except imaplib.IMAP4.error as e:
+            # 如果 [Gmail]/Drafts 不行，尝试普通 Drafts
+            try:
+                conn = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
+                conn.login(self.email_account, self.email_password)
+                conn.select("Drafts")
+                status, _ = conn.append(
+                    "Drafts", "\\Draft", None, mime_msg.as_bytes()
+                )
+                conn.logout()
+                if status == "OK":
+                    return json.dumps({
+                        "status": "success",
+                        "draft_status": "saved_to_drafts",
+                        "message": "回复草稿已保存到草稿箱",
+                    }, ensure_ascii=False)
+            except Exception:
+                pass
+
+            error_msg = f"保存草稿失败: {e}"
+            logger.error(error_msg)
+            return json.dumps({
+                "status": "error",
+                "message": error_msg,
+            }, ensure_ascii=False)
+        except Exception as e:
+            error_msg = f"生成回复草稿失败: {e}"
+            logger.error(error_msg)
+            return json.dumps({
+                "status": "error",
+                "message": error_msg,
+            }, ensure_ascii=False)
+
+    def send_confirmed(
+        self, to_addr: str, subject: str, content: str,
+        cc_addr: str = "", reply_to_mail_id: str = ""
+    ) -> str:
+        """
+        实际发送已确认的回复邮件（需人工确认后调用）。
+
+        Args:
+            to_addr: 收件人地址
+            subject: 邮件主题
+            content: 邮件正文
+            cc_addr: 抄送地址（可选）
+            reply_to_mail_id: 原邮件ID（可选，仅用于记录）
+
+        Returns:
+            str: 发送结果
+        """
+        if not all([self.smtp_server, self.email_account, self.email_password]):
+            return json.dumps({
+                "status": "error",
+                "message": "SMTP配置不完整，无法发送邮件"
+            }, ensure_ascii=False)
+
+        try:
+            msg = MIMEText(content, "plain", "utf-8")
+            msg["Subject"] = subject
+            msg["From"] = self.email_account
+            msg["To"] = to_addr
+            if cc_addr:
+                msg["Cc"] = cc_addr
+
+            # SMTP连接：根据端口选择 SSL 或 STARTTLS
+            if self.smtp_port == 465:
+                server = smtplib.SMTP_SSL(
+                    self.smtp_server, self.smtp_port, timeout=30
+                )
+            else:
+                server = smtplib.SMTP(
+                    self.smtp_server, self.smtp_port, timeout=30
+                )
+                server.starttls()
+
+            server.login(self.email_account, self.email_password)
+            server.send_message(msg)
+            server.quit()
+
+            return json.dumps({
+                "status": "success",
+                "message": f"邮件已发送至 {to_addr}",
+                "subject": subject,
+            }, ensure_ascii=False)
+
+        except smtplib.SMTPAuthenticationError:
+            return json.dumps({
+                "status": "error",
+                "message": "SMTP登录失败，请检查邮箱地址和密码（如开启双重验证，需使用应用专用密码）"
+            }, ensure_ascii=False)
+        except smtplib.SMTPException as e:
+            return json.dumps({
+                "status": "error",
+                "message": f"SMTP发送失败: {e}"
+            }, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({
+                "status": "error",
+                "message": f"发送邮件异常: {e}"
+            }, ensure_ascii=False)
+
+    @staticmethod
+    def _get_email_body(msg) -> str:
+        """从邮件对象中提取纯文本正文"""
+        body = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                content_type = part.get_content_type()
+                if content_type == "text/plain":
+                    charset = part.get_content_charset() or "utf-8"
+                    try:
+                        body = part.get_payload(decode=True).decode(charset, errors="replace")
+                    except Exception:
+                        body = part.get_payload(decode=True).decode("utf-8", errors="replace")
+                    break
+                elif content_type == "text/html" and not body:
+                    charset = part.get_content_charset() or "utf-8"
+                    try:
+                        body = part.get_payload(decode=True).decode(charset, errors="replace")
+                    except Exception:
+                        body = ""
+        else:
+            charset = msg.get_content_charset() or "utf-8"
+            try:
+                body = msg.get_payload(decode=True).decode(charset, errors="replace")
+            except Exception:
+                body = msg.get_payload(decode=True).decode("utf-8", errors="replace")
+
+        return body.strip()
+
+    def _extract_attachments(self, msg, email_id) -> list[dict]:
+        """
+        提取邮件附件并保存到本地。
+
+        Args:
+            msg: email.message.Message 对象
+            email_id: 邮件ID（用于命名）
+
+        Returns:
+            list[dict]: 附件信息列表，包含 name, saved_path, size_kb, content_type
+        """
+        attachments = []
+        if not msg.is_multipart():
+            return attachments
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_id = str(email_id).replace("/", "_").replace("\\", "_")
+
+        for part in msg.walk():
+            if part.get_content_maintype() == "multipart":
+                continue
+            if part.get("Content-Disposition") is None:
+                continue
+
+            filename = part.get_filename()
+            if not filename:
+                continue
+
+            # 解码附件文件名
+            try:
+                decoded_filename = decode_header(filename)
+                filename = "".join(
+                    part.decode(charset or "utf-8") if isinstance(part, bytes) else part
+                    for part, charset in decoded_filename
+                )
+            except Exception:
+                pass
+
+            # 生成唯一文件名避免冲突
+            ext = os.path.splitext(filename)[1] or ""
+            safe_filename = f"{safe_id}_{uuid.uuid4().hex[:8]}{ext}"
+            filepath = os.path.join(self.attachment_dir, safe_filename)
+
+            try:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    with open(filepath, "wb") as f:
+                        f.write(payload)
+                    attachments.append({
+                        "filename": filename,
+                        "saved_path": filepath,
+                        "size_kb": round(len(payload) / 1024, 1),
+                        "content_type": part.get_content_type(),
+                    })
+                    logger.info(f"附件已保存: {filename} -> {filepath}")
+            except Exception as e:
+                logger.warning(f"保存附件 {filename} 失败: {e}")
+
+        return attachments
