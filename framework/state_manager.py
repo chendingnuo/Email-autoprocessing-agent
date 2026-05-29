@@ -99,10 +99,10 @@ class StateManager:
         1. 更新摘要（将历史压缩为轻量摘要）
         2. 保留最近3轮完整交互
         """
-        if len(ctx.conversation_history) > 3:
+        if len(ctx.conversation_history) > 5:
             ctx.summary = self.generate_summary(ctx)
-            # 只保留最近3轮
-            ctx.conversation_history = ctx.conversation_history[-3:]
+            # 保留最近5轮完整交互（给复杂任务更多上下文）
+            ctx.conversation_history = ctx.conversation_history[-5:]
 
     # ── 持久化 ─────────────────────────────────────────
 

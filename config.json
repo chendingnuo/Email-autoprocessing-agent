@@ -1,18 +1,15 @@
 {
+    "_comment": "此配置文件通过 main.py 自动加载，可覆盖 .env 中的默认值。",
+    "_note": "邮箱配置已迁移至 data/email_accounts.json，不在此文件中管理。",
     "llm": {
-        "provider": "tongyi",
-        "model": "qwen-plus",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "base_url": "https://api.deepseek.com/v1",
         "temperature": 0.1,
         "max_tokens": 4096
     },
-    "email": {
-        "imap_server": "",
-        "imap_port": 993,
-        "smtp_server": "",
-        "smtp_port": 465
-    },
     "engine": {
-        "max_steps": 15,
+        "max_steps": 50,
         "deadlock_threshold": 3,
         "log_level": "INFO"
     }

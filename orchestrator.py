@@ -278,7 +278,7 @@ class Orchestrator:
             name="excel_list_files",
             description=(
                 "列出 data/ 目录下所有可用的 Excel 表格文件。请在操作文件前先调用此工具查看有哪些可用文件。"
-                "当前主要表格：荣誉活动立项汇总表.xlsx（立项登记）、志愿者荣誉时数-志愿者编号导入模板.xls（志愿时数导入）。"
+                "当前主要表格：荣誉活动立项汇总表.xlsx（立项登记）、志愿者荣誉时数-志愿者编号导入模板.xlsx（志愿时数导入）。"
             ),
             fn=lambda: excel_tools.list_files(),
         )
@@ -289,7 +289,7 @@ class Orchestrator:
                 "获取指定Excel表格的结构（列名、行数等）。"
                 "参数excel_path是文件名（不需要 data/ 前缀）。"
                 "注意：荣誉活动立项汇总表.xlsx 的标题在第1行、表头在第2行，请使用 header_row=1；"
-                "志愿者荣誉时数导入模板.xls 的标题在第1行、说明在第2行、表头在第3行，请使用 header_row=2。"
+                "志愿者荣誉时数-志愿者编号导入模板.xlsx 的标题在第1行、说明在第2行、表头在第3行，请使用 header_row=2。"
             ),
             fn=lambda excel_path, header_row=0: excel_tools.get_schema(
                 file_path=excel_path, header_row=header_row
@@ -301,9 +301,10 @@ class Orchestrator:
             description=(
                 "在指定表格中检查是否存在重复记录（根据关键字段匹配）。"
                 "参数excel_path是文件名，fields是待匹配的字段-值字典。"
-                "例如：检查立项表中是否已有同名的活动，fields={'活动名称': '校园清洁'}。"
+                "例如：检查立项表中是否已有同名的活动，fields={'活动名称': '绿动校园环保清洁志愿服务活动'}。"
                 "返回 duplicate_found 或 no_duplicate。"
                 "重要：立项申请请始终使用 excel_path='荣誉活动立项汇总表.xlsx'，不要使用 test_output.xlsx 或其他测试文件。"
+                "立项汇总表去重建议用字段：'活动名称'；志愿时数导入去重建议用：'志愿者编号*'。",
             ),
             fn=lambda excel_path, fields, header_row=0: excel_tools.check_duplicate(
                 file_path=excel_path, fields=fields, header_row=header_row
@@ -319,7 +320,8 @@ class Orchestrator:
                 "如果提供 dedup_fields，插入前会自动检查这些字段是否已存在相同记录。"
                 "如出现重复会返回 duplicate 状态，需要告知发件人。"
                 "插入成功后请调用 email_reply_draft 发送确认回复。"
-                "注意：荣誉活动立项汇总表.xlsx 使用 header_row=1；志愿者荣誉时数导入模板.xls 使用 header_row=2。"
+                "注意：荣誉活动立项汇总表.xlsx 使用 header_row=1，列名：['立项通过日期','昵称','立项组织/学院/社团','活动名称','志愿者工作内容','是否已发送回件','备注']；"
+                "志愿者荣誉时数-志愿者编号导入模板.xlsx 使用 header_row=2，列名：['序号','姓名*','志愿者编号*','荣誉时数值*','补录原因*']。"
                 "重要：立项申请请始终使用 excel_path='荣誉活动立项汇总表.xlsx'，不要使用 test_output.xlsx 或其他测试文件。"
             ),
             fn=lambda excel_path, record, dedup_fields=None, header_row=0: excel_tools.insert_record(
@@ -373,8 +375,6 @@ class Orchestrator:
             "summary": ctx.summary or "",
             "error": ctx.error,
             "extracted_data": ctx.extracted_data,
-            "created_at": ctx.created_at.isoformat(),
-            "completed_at": ctx.completed_at.isoformat() if ctx.completed_at else None,
         }
 
 

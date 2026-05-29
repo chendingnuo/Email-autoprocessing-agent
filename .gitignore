@@ -19,4 +19,11 @@ data/tasks/
 # 邮件附件下载缓存
 data/attachments/
 
-# ── IDE / 编辑器 ──────────────────────────────
+# ── IDE / 编辑器 ─────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

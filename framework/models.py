@@ -125,8 +125,8 @@ class TaskContext:
                 "content": f"【历史摘要】\n{self.summary}"
             })
 
-        # 最近3轮的完整交互
-        recent_turns = self.conversation_history[-3:] if len(self.conversation_history) > 3 else self.conversation_history
+        # 最近5轮的完整交互（滑动窗口策略）
+        recent_turns = self.conversation_history[-5:] if len(self.conversation_history) > 5 else self.conversation_history
         for turn in recent_turns:
             if turn.response:
                 messages.append({

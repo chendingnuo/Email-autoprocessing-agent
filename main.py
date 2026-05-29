@@ -20,13 +20,20 @@ import uvicorn
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import AppConfig
-from orchestrator import create_orchestrator
+from orchestrator import Orchestrator
 
 logger = logging.getLogger(__name__)
 
-# 初始化
-config = AppConfig()
-orchestrator = create_orchestrator()
+# 初始化 — 优先加载 config.json（可覆盖 .env 中的默认值）
+_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+if os.path.exists(_config_path):
+    config = AppConfig.from_file(_config_path)
+    logger.info(f"已加载配置文件: {_config_path}")
+else:
+    config = AppConfig()
+    logger.info("未找到 config.json，使用环境变量默认配置")
+
+orchestrator = Orchestrator(config)
 
 app = FastAPI(
     title="学生行政工作智能Agent系统",
@@ -209,7 +216,7 @@ INDEX_HTML = """<!DOCTYPE html>
                     <button onclick="quickTask(\'\u5904\u7406\u6700\u8fd1\u6536\u5230\u7684\u7acb\u9879\u7533\u8bf7\u90ae\u4ef6\uff1a\u8bfb\u53d6\u90ae\u4ef6\u548c\u9644\u4ef6\u4e2d\u7684\u7acb\u9879\u7533\u8bf7\u4e66\uff0c\u63d0\u53d6\u6d3b\u52a8\u4fe1\u606f\u586b\u5165\u8363\u8a89\u6d3b\u52a8\u7acb\u9879\u6c47\u603b\u8868\uff0c\u7136\u540e\u53d1\u9001\u786e\u8ba4\u56de\u590d\')"
                         class="group text-left p-5 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all">
                         <div class="flex items-center gap-3">
-                            <span class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">\ud83d\udccb</span>
+                            <span class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">📋</span>
                             <div>
                                 <div class="font-medium text-gray-900">\u8363\u8a89\u65f6\u6570\u7acb\u9879\u5904\u7406</div>
                                 <div class="text-sm text-gray-400 group-hover:text-gray-500 mt-0.5">\u8bfb\u53d6\u90ae\u4ef6 \u2192 \u89e3\u6790\u9644\u4ef6 \u2192 \u586b\u5165\u7acb\u9879\u6c47\u603b\u8868 \u2192 \u56de\u590d\u786e\u8ba4</div>
@@ -575,7 +582,7 @@ if __name__ == "__main__":
     host = os.getenv("AGENT_HOST", "127.0.0.1")
     port = int(os.getenv("AGENT_PORT", "8000"))
 
-    print(f"\ud83c\udf10 Web\u7ba1\u7406\u754c\u9762: http://{host}:{port}")
-    print(f"\ud83d\udce1 API\u670d\u52a1: http://{host}:{port}/api")
+    print("\U0001f310 Web\u7ba1\u7406\u754c\u9762: http://{host}:{port}".format(host=host, port=port))
+    print("\U0001f4e1 API\u670d\u52a1: http://{host}:{port}/api".format(host=host, port=port))
     print()
     uvicorn.run(app, host=host, port=port, log_level="info")

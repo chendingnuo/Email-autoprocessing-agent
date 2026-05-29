@@ -80,6 +80,7 @@ class EmailTools:
     def read_unread(self, limit: int = 10) -> str:
         """
         读取收件箱中未处理的邮件，并保存附件到本地。
+        读取后自动将邮件标记为已读，避免重复处理。
 
         Args:
             limit: 最大读取封数
@@ -128,9 +129,13 @@ class EmailTools:
             else:
                 source = "unread"
                 email_ids = email_ids[-limit:]
+
             emails = []
 
             for eid in email_ids:
+                # eid 是 bytes 类型（如 b'95'），统一转为字符串
+                eid_str = eid.decode() if isinstance(eid, bytes) else str(eid)
+
                 status, data = mail.fetch(eid, "(RFC822)")
                 if status != "OK":
                     continue
@@ -151,11 +156,11 @@ class EmailTools:
                 # 提取正文
                 body_text = self._get_email_body(msg)
 
-                # 提取附件
-                attachments = self._extract_attachments(msg, eid)
+                # 提取附件（传入字符串形式的ID，避免 b'95' 出现在文件名中）
+                attachments = self._extract_attachments(msg, eid_str)
 
                 email_msg = EmailMessage(
-                    id=eid.decode() if isinstance(eid, bytes) else str(eid),
+                    id=eid_str,
                     subject=subject or "(无主题)",
                     sender=msg.get("From", ""),
                     recipient=msg.get("To", ""),
@@ -173,6 +178,15 @@ class EmailTools:
                     "attachments": attachments,
                     "has_attachments": len(attachments) > 0,
                 })
+
+            # 将本次读取的未读邮件标记为已读，避免重复处理
+            if source == "unread" and email_ids:
+                for eid in email_ids:
+                    try:
+                        mail.store(eid, '+FLAGS', '\\Seen')
+                    except Exception as e:
+                        logger.warning(f"标记邮件已读失败 ({eid}): {e}")
+                logger.info(f"已将 {len(email_ids)} 封邮件标记为已读")
 
             mail.logout()
 
@@ -396,7 +410,7 @@ class EmailTools:
 
         Args:
             msg: email.message.Message 对象
-            email_id: 邮件ID（用于命名）
+            email_id: 邮件ID字符串（用于命名，已确保不是 bytes 类型）
 
         Returns:
             list[dict]: 附件信息列表，包含 name, saved_path, size_kb, content_type

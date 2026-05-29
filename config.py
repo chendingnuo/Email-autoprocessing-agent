@@ -172,7 +172,7 @@ class LLMConfig:
 @dataclass
 class EngineConfig:
     """引擎配置"""
-    max_steps: int = int(os.getenv("AGENT_MAX_STEPS", "30"))
+    max_steps: int = int(os.getenv("AGENT_MAX_STEPS", "50"))
     deadlock_threshold: int = 3
     storage_dir: str = field(
         default_factory=lambda: os.getenv(
