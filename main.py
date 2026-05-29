@@ -121,6 +121,48 @@ async def list_accounts():
     return {"accounts": accounts, "total": len(accounts)}
 
 
+# ── 数据查询 API ─────────────────────────────────────
+
+@app.get("/api/data/activities")
+async def query_activities():
+    """查询荣誉活动立项汇总表中的已登记活动记录"""
+    try:
+        import pandas as pd
+        import os
+        path = os.path.join(config.data_dir, "荣誉活动立项汇总表.xlsx")
+        df = pd.read_excel(path, sheet_name="Sheet1", dtype=str, header=1)
+        df = df.fillna("")
+        records = df.to_dict(orient="records")
+        return {
+            "status": "success",
+            "total": len(records),
+            "columns": list(df.columns),
+            "records": records,
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e), "records": []}
+
+
+@app.get("/api/data/volunteers")
+async def query_volunteers():
+    """查询志愿者荣誉时数导入模板中的已导入记录"""
+    try:
+        import pandas as pd
+        import os
+        path = os.path.join(config.data_dir, "志愿者荣誉时数-志愿者编号导入模板.xlsx")
+        df = pd.read_excel(path, sheet_name="Sheet1", dtype=str, header=2)
+        df = df.fillna("")
+        records = df.to_dict(orient="records")
+        return {
+            "status": "success",
+            "total": len(records),
+            "columns": list(df.columns),
+            "records": records,
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e), "records": []}
+
+
 # ── 主页 ─────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -137,7 +179,96 @@ INDEX_HTML = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>荣誉时数管理系统</title>
-    <script src="https://cdn.tailwindcss.com" async></script>
+    <script src="https://cdn.tailwindcss.com" async>
+        // ── 数据查询 ───────────────────────
+
+        var _dataCache = null;
+
+        async function loadData() {
+            var table = document.getElementById('dataTableSelector').value;
+            hide('dataError');
+            hide('dataEmpty');
+            hide('dataTableWrap');
+            show('dataLoading');
+
+            try {
+                var resp = await fetch('/api/data/' + table);
+                var data = await resp.json();
+                hide('dataLoading');
+
+                if (data.status === 'error') {
+                    show('dataError');
+                    document.getElementById('dataErrorMessage').textContent = data.message || '加载失败';
+                    return;
+                }
+
+                if (!data.records || data.records.length === 0) {
+                    show('dataEmpty');
+                    return;
+                }
+
+                _dataCache = data;
+                document.getElementById('dataTotalCount').textContent = data.total;
+                renderDataTable(data.records, data.columns);
+                show('dataTableWrap');
+                document.getElementById('dataFilterCount').classList.add('hidden');
+
+            } catch(e) {
+                hide('dataLoading');
+                show('dataError');
+                document.getElementById('dataErrorMessage').textContent = '请求失败: ' + e.message;
+            }
+        }
+
+        function renderDataTable(records, columns) {
+            var thead = document.getElementById('dataTableHead');
+            var tbody = document.getElementById('dataTableBody');
+
+            var headerHtml = '<tr>';
+            headerHtml += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>';
+            columns.forEach(function(col) {
+                headerHtml += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">' + col + '</th>';
+            });
+            headerHtml += '</tr>';
+            thead.innerHTML = headerHtml;
+
+            var bodyHtml = '';
+            records.forEach(function(row, idx) {
+                bodyHtml += '<tr class="hover:bg-gray-50 transition-colors">';
+                bodyHtml += '<td class="px-4 py-3 text-sm text-gray-400">' + (idx + 1) + '</td>';
+                columns.forEach(function(col) {
+                    var val = row[col] || '';
+                    bodyHtml += '<td class="px-4 py-3 text-sm text-gray-700 max-w-xs truncate" title="' + val.replace(/"/g, '&quot;') + '">' + val + '</td>';
+                });
+                bodyHtml += '</tr>';
+            });
+            tbody.innerHTML = bodyHtml;
+        }
+
+        function filterDataTable() {
+            if (!_dataCache || !_dataCache.records) return;
+            var keyword = document.getElementById('dataSearchInput').value.trim().toLowerCase();
+            var filtered = _dataCache.records;
+
+            if (keyword) {
+                filtered = _dataCache.records.filter(function(row) {
+                    return Object.values(row).some(function(val) {
+                        return String(val).toLowerCase().indexOf(keyword) > -1;
+                    });
+                });
+            }
+
+            renderDataTable(filtered, _dataCache.columns);
+            var fc = document.getElementById('dataFilterCount');
+            if (keyword) {
+                fc.classList.remove('hidden');
+                fc.textContent = filtered.length + ' / ' + _dataCache.records.length + ' 条';
+            } else {
+                fc.classList.add('hidden');
+            }
+        }
+
+    </script>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="max-w-6xl mx-auto p-6">
@@ -192,7 +323,7 @@ INDEX_HTML = """<!DOCTYPE html>
         <!-- Tab 切换 -->
         <div class="flex gap-1 mb-6 border-b border-gray-200">
             <button id="tabExecute" onclick="switchTab(\'execute\')" class="px-5 py-3 text-sm font-medium border-b-2 border-blue-600 text-blue-600 transition-colors">\u4efb\u52a1\u6267\u884c</button>
-            <button id="tabHistory" onclick="switchTab(\'history\')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors">\u5386\u53f2\u8bb0\u5f55</button>
+            <button id="tabHistory" onclick="switchTab(\'history\')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors">\u5386\u53f2\u8bb0\u5f55</button>\n            <button id="tabData" onclick="switchTab(\'data\')" class="px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors">\u6570\u636e\u67e5\u8be2</button>
         </div>
 
         <!-- 任务执行页 -->
@@ -327,6 +458,48 @@ INDEX_HTML = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- 数据查询页 -->
+        <div id="pageData" class="hidden">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-lg font-semibold text-gray-900">数据查询</h2>
+                <div class="flex gap-2">
+                    <select id="dataTableSelector" onchange="loadData()" class="px-4 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="activities">荣誉活动立项汇总表</option>
+                        <option value="volunteers">志愿者时数导入模板</option>
+                    </select>
+                    <button onclick="loadData()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium">刷新</button>
+                </div>
+            </div>
+
+            <div id="dataLoading" class="text-center py-12 text-gray-400">加载中...</div>
+            <div id="dataEmpty" class="hidden text-center py-12">
+                <p class="text-gray-400 text-lg">暂无记录</p>
+                <p class="text-gray-300 text-sm mt-1">数据将在任务执行后自动填充</p>
+            </div>
+            <div id="dataError" class="hidden text-center py-8">
+                <p class="text-red-500" id="dataErrorMessage"></p>
+            </div>
+            <div id="dataTableWrap" class="hidden">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="px-6 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                        <span class="text-sm text-gray-600">
+                            共 <span id="dataTotalCount" class="font-semibold text-gray-900">0</span> 条记录
+                        </span>
+                        <div class="flex items-center gap-3">
+                            <input id="dataSearchInput" type="text" placeholder="搜索关键字..." oninput="filterDataTable()" class="px-3 py-1.5 border border-gray-200 rounded text-sm outline-none focus:ring-2 focus:ring-blue-500 w-48">
+                            <span id="dataFilterCount" class="text-xs text-gray-400 hidden"></span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table id="dataTable" class="w-full text-sm">
+                            <thead id="dataTableHead" class="bg-gray-50 text-gray-600"></thead>
+                            <tbody id="dataTableBody" class="divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 页脚 -->
         <div class="mt-10 text-center text-xs text-gray-300">
             \u8363\u8a89\u65f6\u6570\u7ba1\u7406\u7cfb\u7edf v2.0
@@ -355,7 +528,7 @@ INDEX_HTML = """<!DOCTYPE html>
         var currentTab = \'execute\';
         function switchTab(tab) {
             currentTab = tab;
-            [\'execute\', \'history\'].forEach(function(t) {
+            [\'execute\', \'history\', \'data\'].forEach(function(t) {
                 var page = document.getElementById(\'page\' + t.charAt(0).toUpperCase() + t.slice(1));
                 var btn = document.getElementById(\'tab\' + t.charAt(0).toUpperCase() + t.slice(1));
                 if (t === tab) {
@@ -366,7 +539,7 @@ INDEX_HTML = """<!DOCTYPE html>
                     btn.className = \'px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors\';
                 }
             });
-            if (tab === \'history\') loadHistory();
+            if (tab === \'history\') loadHistory();\n            if (tab === \'data\') loadData();\n            if (tab === \'data\') loadData();
         }
 
         async function loadHistory() {
