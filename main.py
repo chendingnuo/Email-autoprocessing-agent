@@ -251,7 +251,7 @@ INDEX_HTML = """<!DOCTYPE html>
                     <button onclick="quickTask(\'\u5904\u7406\u6700\u8fd1\u6536\u5230\u7684\u7acb\u9879\u7533\u8bf7\u90ae\u4ef6\uff1a\u8bfb\u53d6\u90ae\u4ef6\u548c\u9644\u4ef6\u4e2d\u7684\u7acb\u9879\u7533\u8bf7\u4e66\uff0c\u63d0\u53d6\u6d3b\u52a8\u4fe1\u606f\u586b\u5165\u8363\u8a89\u6d3b\u52a8\u7acb\u9879\u6c47\u603b\u8868\uff0c\u7136\u540e\u53d1\u9001\u786e\u8ba4\u56de\u590d\')"
                         class="group text-left p-5 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all">
                         <div class="flex items-center gap-3">
-                            <span class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">\ud83d\udccb</span>
+                            <span class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">\U0001F4CB</span>
                             <div>
                                 <div class="font-medium text-gray-900">\u8363\u8a89\u65f6\u6570\u7acb\u9879\u5904\u7406</div>
                                 <div class="text-sm text-gray-400 group-hover:text-gray-500 mt-0.5">\u8bfb\u53d6\u90ae\u4ef6 \u2192 \u89e3\u6790\u9644\u4ef6 \u2192 \u586b\u5165\u7acb\u9879\u6c47\u603b\u8868 \u2192 \u56de\u590d\u786e\u8ba4</div>
@@ -309,15 +309,25 @@ INDEX_HTML = """<!DOCTYPE html>
                                 </div>
                             </div>
                         </div>
-                        <div id="successState" class="hidden">
-                            <div class="flex items-start gap-3 p-4 bg-green-50 rounded-lg border border-green-100 mb-4">
-                                <svg class="w-6 h-6 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <div id="successState" class="hidden">
+                            <div class="flex items-center gap-2 p-3 bg-green-50 rounded-lg border border-green-100">
+                                <svg class="w-5 h-5 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                 </svg>
-                                <div>
-                                    <p class="font-medium text-green-800">\u4efb\u52a1\u5df2\u5b8c\u6210</p>
-                                    <p class="text-green-600 text-sm mt-1" id="summaryText"></p>
-                                </div>
+                                <span class="font-medium text-green-800 text-sm">✓ 已完成</span>
+                                <span id="taskStepsDisplay" class="text-green-600 text-sm ml-auto hidden"></span>
+                            </div>
+                        </div>
+                        <div id="hintState" class="hidden">
+                            <div class="p-4 bg-gray-50 rounded-lg mt-3">
+                                <p class="text-sm font-medium text-gray-700 mb-2">⏳ 待人工确认</p>
+                                <div id="hintContent" class="text-sm text-gray-600 leading-relaxed"></div>
+                            </div>
+                        </div>
+                        <div id="replyState" class="hidden">
+                            <div class="p-4 bg-white rounded-lg border border-gray-200 mt-3">
+                                <p class="text-sm font-medium text-gray-700 mb-2">🤖 Agent 回复</p>
+                                <div id="replyContent" class="text-sm text-gray-800 leading-relaxed"></div>
                             </div>
                         </div>
                         <div id="blockedState" class="hidden">
@@ -417,7 +427,73 @@ INDEX_HTML = """<!DOCTYPE html>
         function $(id) { return document.getElementById(id); }
         function show(id) { $(id).classList.remove(\'hidden\'); }
         function hide(id) { $(id).classList.add(\'hidden\'); }
+        var NL = String.fromCharCode(10);
         function setText(id, text) { $(id).textContent = text; }
+        function setHtml(id, html) { $(id).innerHTML = html; }
+
+        function renderMarkdown(text) {
+            if (!text) return '';
+            var t = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            t = t.replace(/[*]{2}(.+?)[*]{2}/g, '<strong>$1</strong>');
+            t = t.replace(/`(.+?)`/g, '<code class="px-1 py-0.5 bg-gray-100 rounded text-xs font-mono">$1</code>');
+            var lines = t.split(NL);
+            var html = '';
+            var inUl = false, inOl = false;
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                if (!line.trim()) {
+                    if (inUl) { html += '</ul>'; inUl = false; }
+                    if (inOl) { html += '</ol>'; inOl = false; }
+                    html += '<div class="h-2"></div>';
+                    continue;
+                }
+                if (/^[*-] /.test(line)) {
+                    if (inOl) { html += '</ol>'; inOl = false; }
+                    if (!inUl) { html += '<ul class="list-disc pl-5 my-1 space-y-0.5">'; inUl = true; }
+                    html += '<li>' + line.replace(/^[*-] /, '') + '</li>';
+                    continue;
+                }
+                if (/^[0-9]+[.)] /.test(line)) {
+                    if (inUl) { html += '</ul>'; inUl = false; }
+                    if (!inOl) { html += '<ol class="list-decimal pl-5 my-1 space-y-0.5">'; inOl = true; }
+                    html += '<li>' + line.replace(/^[0-9]+[.)] /, '') + '</li>';
+                    continue;
+                }
+                if (inUl) { html += '</ul>'; inUl = false; }
+                if (inOl) { html += '</ol>'; inOl = false; }
+                var trimmed = line.trim();
+                if (/^# /.test(trimmed)) {
+                    html += '<div class="font-semibold text-gray-900 mt-2 mb-1">' + trimmed.replace(/^# /, '') + '</div>';
+                } else if (/^## /.test(trimmed)) {
+                    html += '<div class="font-semibold text-gray-800 mt-2 mb-1">' + trimmed.replace(/^## /, '') + '</div>';
+                } else if (/^### /.test(trimmed)) {
+                    html += '<div class="font-semibold text-gray-700 mt-1 mb-1">' + trimmed.replace(/^### /, '') + '</div>';
+                } else {
+                    html += line + '<br>';
+                }
+            }
+            if (inUl) html += '</ul>';
+            if (inOl) html += '</ol>';
+            return html;
+        }
+
+        function extractHint(summary) {
+            if (!summary) return '';
+            var idx = summary.indexOf('待人工确认');
+            if (idx === -1) idx = summary.indexOf('待确认事项');
+            if (idx === -1) idx = summary.indexOf('待处理事项');
+            if (idx !== -1) return summary.substring(idx);
+            var lines = summary.split(NL);
+            var hintLines = [];
+            var inHint = false;
+            for (var i = 0; i < lines.length; i++) {
+                if (lines[i].indexOf('⏳') > -1 || lines[i].indexOf('⚠') > -1 || lines[i].indexOf('需要人工') > -1 || lines[i].indexOf('请登录') > -1) {
+                    inHint = true;
+                }
+                if (inHint) hintLines.push(lines[i]);
+            }
+            return hintLines.join(NL);
+        }
 
         function formatTime(isoStr) {
             if (!isoStr) return \'-\';
@@ -507,11 +583,21 @@ INDEX_HTML = """<!DOCTYPE html>
                 hide(\'loadingState\');
                 hide(\'progressBar\');
                 hide(\'successState\');
+                hide(\'hintState\');
+                hide(\'replyState\');
                 hide(\'blockedState\');
                 hide(\'errorState\');
                 if (data.status === \'completed\') {
                     show(\'successState\');
-                    setText(\'summaryText\', data.summary || \'\u4efb\u52a1\u5df2\u5b8c\u6210\u3002\');
+                    show(\'replyState\');
+                    show(\'taskStepsDisplay\');
+                    setText(\'taskStepsDisplay\', data.steps + \' \u6b65\');
+                    setHtml(\'replyContent\', renderMarkdown(data.summary || \'\u4efb\u52a1\u5df2\u5b8c\u6210\u3002\'));
+                    var hint = extractHint(data.summary);
+                    if (hint) {
+                        show(\'hintState\');
+                        setHtml(\'hintContent\', renderMarkdown(hint));
+                    }
                 } else if (data.status === \'blocked\') {
                     show(\'blockedState\');
                     setText(\'blockedReason\', data.error || \'\u9700\u8981\u4eba\u5de5\u5ba1\u6838\u5904\u7406\');
@@ -543,6 +629,8 @@ INDEX_HTML = """<!DOCTYPE html>
             hide(\'loadingState\');
             hide(\'errorState\');
             hide(\'successState\');
+            hide(\'hintState\');
+            hide(\'replyState\');
             hide(\'blockedState\');
             hide(\'detailPanel\');
             document.getElementById(\'detailArrow\').classList.remove(\'rotate-180\');
@@ -597,7 +685,15 @@ INDEX_HTML = """<!DOCTYPE html>
 
                 if (data.status === \'completed\') {
                     show(\'successState\');
-                    setText(\'summaryText\', data.summary || \'\u4efb\u52a1\u5df2\u5b8c\u6210\u3002\');
+                    show(\'replyState\');
+                    show(\'taskStepsDisplay\');
+                    setText(\'taskStepsDisplay\', data.steps + \' \u6b65\');
+                    setHtml(\'replyContent\', renderMarkdown(data.summary || \'\u4efb\u52a1\u5df2\u5b8c\u6210\u3002\'));
+                    var hint = extractHint(data.summary);
+                    if (hint) {
+                        show(\'hintState\');
+                        setHtml(\'hintContent\', renderMarkdown(hint));
+                    }
                 } else if (data.status === \'blocked\') {
                     show(\'blockedState\');
                     setText(\'blockedReason\', data.error || \'\u9700\u8981\u4eba\u5de5\u5ba1\u6838\u5904\u7406\');
@@ -746,7 +842,7 @@ if __name__ == "__main__":
     host = os.getenv("AGENT_HOST", "127.0.0.1")
     port = int(os.getenv("AGENT_PORT", "8000"))
 
-    print(f"\ud83c\udf10 Web\u7ba1\u7406\u754c\u9762: http://{host}:{port}")
-    print(f"\ud83d\udce1 API\u670d\u52a1: http://{host}:{port}/api")
+    print(f"\U0001F310 Web\u7ba1\u7406\u754c\u9762: http://{host}:{port}")
+    print(f"\U0001F4E1 API\u670d\u52a1: http://{host}:{port}/api")
     print()
     uvicorn.run(app, host=host, port=port, log_level="info")
