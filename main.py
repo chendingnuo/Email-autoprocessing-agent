@@ -20,20 +20,13 @@ import uvicorn
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import AppConfig
-from orchestrator import Orchestrator
+from orchestrator import create_orchestrator
 
 logger = logging.getLogger(__name__)
 
-# 初始化 — 优先加载 config.json（可覆盖 .env 中的默认值）
-_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
-if os.path.exists(_config_path):
-    config = AppConfig.from_file(_config_path)
-    logger.info(f"已加载配置文件: {_config_path}")
-else:
-    config = AppConfig()
-    logger.info("未找到 config.json，使用环境变量默认配置")
-
-orchestrator = Orchestrator(config)
+# 初始化
+config = AppConfig()
+orchestrator = create_orchestrator()
 
 app = FastAPI(
     title="学生行政工作智能Agent系统",
@@ -179,96 +172,7 @@ INDEX_HTML = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>荣誉时数管理系统</title>
-    <script src="https://cdn.tailwindcss.com" async>
-        // ── 数据查询 ───────────────────────
-
-        var _dataCache = null;
-
-        async function loadData() {
-            var table = document.getElementById('dataTableSelector').value;
-            hide('dataError');
-            hide('dataEmpty');
-            hide('dataTableWrap');
-            show('dataLoading');
-
-            try {
-                var resp = await fetch('/api/data/' + table);
-                var data = await resp.json();
-                hide('dataLoading');
-
-                if (data.status === 'error') {
-                    show('dataError');
-                    document.getElementById('dataErrorMessage').textContent = data.message || '加载失败';
-                    return;
-                }
-
-                if (!data.records || data.records.length === 0) {
-                    show('dataEmpty');
-                    return;
-                }
-
-                _dataCache = data;
-                document.getElementById('dataTotalCount').textContent = data.total;
-                renderDataTable(data.records, data.columns);
-                show('dataTableWrap');
-                document.getElementById('dataFilterCount').classList.add('hidden');
-
-            } catch(e) {
-                hide('dataLoading');
-                show('dataError');
-                document.getElementById('dataErrorMessage').textContent = '请求失败: ' + e.message;
-            }
-        }
-
-        function renderDataTable(records, columns) {
-            var thead = document.getElementById('dataTableHead');
-            var tbody = document.getElementById('dataTableBody');
-
-            var headerHtml = '<tr>';
-            headerHtml += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>';
-            columns.forEach(function(col) {
-                headerHtml += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">' + col + '</th>';
-            });
-            headerHtml += '</tr>';
-            thead.innerHTML = headerHtml;
-
-            var bodyHtml = '';
-            records.forEach(function(row, idx) {
-                bodyHtml += '<tr class="hover:bg-gray-50 transition-colors">';
-                bodyHtml += '<td class="px-4 py-3 text-sm text-gray-400">' + (idx + 1) + '</td>';
-                columns.forEach(function(col) {
-                    var val = row[col] || '';
-                    bodyHtml += '<td class="px-4 py-3 text-sm text-gray-700 max-w-xs truncate" title="' + val.replace(/"/g, '&quot;') + '">' + val + '</td>';
-                });
-                bodyHtml += '</tr>';
-            });
-            tbody.innerHTML = bodyHtml;
-        }
-
-        function filterDataTable() {
-            if (!_dataCache || !_dataCache.records) return;
-            var keyword = document.getElementById('dataSearchInput').value.trim().toLowerCase();
-            var filtered = _dataCache.records;
-
-            if (keyword) {
-                filtered = _dataCache.records.filter(function(row) {
-                    return Object.values(row).some(function(val) {
-                        return String(val).toLowerCase().indexOf(keyword) > -1;
-                    });
-                });
-            }
-
-            renderDataTable(filtered, _dataCache.columns);
-            var fc = document.getElementById('dataFilterCount');
-            if (keyword) {
-                fc.classList.remove('hidden');
-                fc.textContent = filtered.length + ' / ' + _dataCache.records.length + ' 条';
-            } else {
-                fc.classList.add('hidden');
-            }
-        }
-
-    </script>
+    <script src="https://cdn.tailwindcss.com" async></script>
 </head>
 <body class="bg-gray-50 min-h-screen">
     <div class="max-w-6xl mx-auto p-6">
@@ -347,7 +251,7 @@ INDEX_HTML = """<!DOCTYPE html>
                     <button onclick="quickTask(\'\u5904\u7406\u6700\u8fd1\u6536\u5230\u7684\u7acb\u9879\u7533\u8bf7\u90ae\u4ef6\uff1a\u8bfb\u53d6\u90ae\u4ef6\u548c\u9644\u4ef6\u4e2d\u7684\u7acb\u9879\u7533\u8bf7\u4e66\uff0c\u63d0\u53d6\u6d3b\u52a8\u4fe1\u606f\u586b\u5165\u8363\u8a89\u6d3b\u52a8\u7acb\u9879\u6c47\u603b\u8868\uff0c\u7136\u540e\u53d1\u9001\u786e\u8ba4\u56de\u590d\')"
                         class="group text-left p-5 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all">
                         <div class="flex items-center gap-3">
-                            <span class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">📋</span>
+                            <span class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xl shrink-0">\ud83d\udccb</span>
                             <div>
                                 <div class="font-medium text-gray-900">\u8363\u8a89\u65f6\u6570\u7acb\u9879\u5904\u7406</div>
                                 <div class="text-sm text-gray-400 group-hover:text-gray-500 mt-0.5">\u8bfb\u53d6\u90ae\u4ef6 \u2192 \u89e3\u6790\u9644\u4ef6 \u2192 \u586b\u5165\u7acb\u9879\u6c47\u603b\u8868 \u2192 \u56de\u590d\u786e\u8ba4</div>
@@ -482,9 +386,7 @@ INDEX_HTML = """<!DOCTYPE html>
             <div id="dataTableWrap" class="hidden">
                 <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                     <div class="px-6 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50">
-                        <span class="text-sm text-gray-600">
-                            共 <span id="dataTotalCount" class="font-semibold text-gray-900">0</span> 条记录
-                        </span>
+                        <span class="text-sm text-gray-600">共 <span id="dataTotalCount" class="font-semibold text-gray-900">0</span> 条记录</span>
                         <div class="flex items-center gap-3">
                             <input id="dataSearchInput" type="text" placeholder="搜索关键字..." oninput="filterDataTable()" class="px-3 py-1.5 border border-gray-200 rounded text-sm outline-none focus:ring-2 focus:ring-blue-500 w-48">
                             <span id="dataFilterCount" class="text-xs text-gray-400 hidden"></span>
@@ -539,7 +441,7 @@ INDEX_HTML = """<!DOCTYPE html>
                     btn.className = \'px-5 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors\';
                 }
             });
-            if (tab === \'history\') loadHistory();\n            if (tab === \'data\') loadData();\n            if (tab === \'data\') loadData();
+            if (tab === \'history\') loadHistory();\n            if (tab === \'data\') loadData();
         }
 
         async function loadHistory() {
@@ -733,6 +635,95 @@ INDEX_HTML = """<!DOCTYPE html>
                 arrow.classList.remove(\'rotate-180\');
             }
         }
+    
+        // ── 数据查询 ───────────────────────
+
+        var _dataCache = null;
+
+        async function loadData() {
+            var table = document.getElementById('dataTableSelector').value;
+            hide('dataError');
+            hide('dataEmpty');
+            hide('dataTableWrap');
+            show('dataLoading');
+
+            try {
+                var resp = await fetch('/api/data/' + table);
+                var data = await resp.json();
+                hide('dataLoading');
+
+                if (data.status === 'error') {
+                    show('dataError');
+                    document.getElementById('dataErrorMessage').textContent = data.message || '加载失败';
+                    return;
+                }
+
+                if (!data.records || data.records.length === 0) {
+                    show('dataEmpty');
+                    return;
+                }
+
+                _dataCache = data;
+                document.getElementById('dataTotalCount').textContent = data.total;
+                renderDataTable(data.records, data.columns);
+                show('dataTableWrap');
+                document.getElementById('dataFilterCount').classList.add('hidden');
+
+            } catch(e) {
+                hide('dataLoading');
+                show('dataError');
+                document.getElementById('dataErrorMessage').textContent = '请求失败: ' + e.message;
+            }
+        }
+
+        function renderDataTable(records, columns) {
+            var thead = document.getElementById('dataTableHead');
+            var tbody = document.getElementById('dataTableBody');
+
+            var headerHtml = '<tr>';
+            headerHtml += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>';
+            columns.forEach(function(col) {
+                headerHtml += '<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">' + col + '</th>';
+            });
+            headerHtml += '</tr>';
+            thead.innerHTML = headerHtml;
+
+            var bodyHtml = '';
+            records.forEach(function(row, idx) {
+                bodyHtml += '<tr class="hover:bg-gray-50 transition-colors">';
+                bodyHtml += '<td class="px-4 py-3 text-sm text-gray-400">' + (idx + 1) + '</td>';
+                columns.forEach(function(col) {
+                    var val = row[col] || '';
+                    bodyHtml += '<td class="px-4 py-3 text-sm text-gray-700 max-w-xs truncate" title="' + val.replace(/"/g, '&quot;') + '">' + val + '</td>';
+                });
+                bodyHtml += '</tr>';
+            });
+            tbody.innerHTML = bodyHtml;
+        }
+
+        function filterDataTable() {
+            if (!_dataCache || !_dataCache.records) return;
+            var keyword = document.getElementById('dataSearchInput').value.trim().toLowerCase();
+            var filtered = _dataCache.records;
+
+            if (keyword) {
+                filtered = _dataCache.records.filter(function(row) {
+                    return Object.values(row).some(function(val) {
+                        return String(val).toLowerCase().indexOf(keyword) > -1;
+                    });
+                });
+            }
+
+            renderDataTable(filtered, _dataCache.columns);
+            var fc = document.getElementById('dataFilterCount');
+            if (keyword) {
+                fc.classList.remove('hidden');
+                fc.textContent = filtered.length + ' / ' + _dataCache.records.length + ' 条';
+            } else {
+                fc.classList.add('hidden');
+            }
+        }
+
     </script>
 </body>
 </html>"""
@@ -755,7 +746,7 @@ if __name__ == "__main__":
     host = os.getenv("AGENT_HOST", "127.0.0.1")
     port = int(os.getenv("AGENT_PORT", "8000"))
 
-    print("\U0001f310 Web\u7ba1\u7406\u754c\u9762: http://{host}:{port}".format(host=host, port=port))
-    print("\U0001f4e1 API\u670d\u52a1: http://{host}:{port}/api".format(host=host, port=port))
+    print(f"\ud83c\udf10 Web\u7ba1\u7406\u754c\u9762: http://{host}:{port}")
+    print(f"\ud83d\udce1 API\u670d\u52a1: http://{host}:{port}/api")
     print()
     uvicorn.run(app, host=host, port=port, log_level="info")
