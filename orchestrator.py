@@ -196,7 +196,7 @@ class Orchestrator:
                 f"邮箱账号已加载: [{acct_name}] {acct_cfg.email} ({acct_cfg.provider})"
             )
 
-        default_inst = self._email_instances.get("default")
+        default_inst = self._email_instances.get("qq")
 
         return {
             "email": default_inst,
@@ -364,7 +364,36 @@ class Orchestrator:
             require_confirmation=True,
         )
 
+        # ── 数据持久化工具 ─────────────────────────────
+
+        tool_registry.register_from_callable(
+            name="data_store",
+            description=(
+                "将当前步骤提取的业务数据持久化到任务上下文。"
+                "每次从邮件或附件中提取出结构化信息后，必须立即调用此工具保存。"
+                "参数 data 是一个字典，包含提取的字段名和字段值。"
+                "例如：从立项申请书中提取到活动名称、负责人等信息后，"
+                "调用 data_store(data={'活动名称': 'xxx', '负责人': 'xxx'}) 保存。"
+                "保存后的数据会显示在后续系统提示中，避免重复提取。"
+            ),
+            fn=lambda data: self._store_extracted(data),
+        )
+
         logger.info(f"已注册 {len(tool_registry.list_tools())} 个工具")
+
+    def _store_extracted(self, data: dict) -> str:
+        """持久化提取的业务数据到引擎上下文"""
+        if not isinstance(data, dict):
+            return json.dumps({
+                "status": "error",
+                "message": "data 参数必须是字典类型",
+            }, ensure_ascii=False)
+        self.engine._data_store.update(data)
+        return json.dumps({
+            "status": "success",
+            "message": f"已存储 {len(data)} 个字段: {', '.join(data.keys())}",
+            "stored_fields": list(data.keys()),
+        }, ensure_ascii=False)
 
     @staticmethod
     def _format_result(ctx: TaskContext) -> dict[str, Any]:

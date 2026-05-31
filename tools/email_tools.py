@@ -18,7 +18,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.mime.text import MIMEText
-from email.header import decode_header
+from email.header import Header, decode_header
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -209,9 +209,20 @@ class EmailTools:
                 "emails": []
             }, ensure_ascii=False)
 
+    @staticmethod
+    def _detect_draft_folder(imap_server: str) -> str:
+        """根据 IMAP 服务器判断草稿箱文件夹名称"""
+        gmail_domains = ("gmail.com", "googlemail.com")
+        if any(d in imap_server.lower() for d in gmail_domains):
+            return "[Gmail]/Drafts"
+        return "Drafts"
+
     def reply_draft(self, mail_id: str, subject: str, content: str) -> str:
         """
-        将回复邮件保存到 Gmail 草稿箱 [Gmail]/Drafts，供人工审核后发送。
+        将回复邮件保存到草稿箱，供人工审核后发送。
+        自动根据邮箱服务商选择正确的草稿箱文件夹：
+          - Gmail → [Gmail]/Drafts
+          - 其他（QQ/126/163/ZJU等）→ Drafts
 
         Args:
             mail_id: 原邮件ID
@@ -227,19 +238,22 @@ class EmailTools:
                 "message": "IMAP服务器未配置，无法保存草稿"
             }, ensure_ascii=False)
 
-        # 先构建回复内容，确保后续各分支都能使用
         reply_subject = f"Re: {subject}" if not subject.startswith("Re:") else subject
         mime_msg = MIMEText(content, "plain", "utf-8")
-        mime_msg["Subject"] = reply_subject
+        # 正确编码含中文的邮件头（RFC 2047），避免 ascii 编码错误
+        mime_msg["Subject"] = Header(reply_subject, "utf-8")
         mime_msg["From"] = self.email_account
         mime_msg["In-Reply-To"] = mail_id
 
+        draft_folder = self._detect_draft_folder(self.imap_server)
+        fallback_folder = "Drafts" if draft_folder != "Drafts" else None
+
         try:
-            # 1. 先从收件箱找到原邮件，获取发件人地址
             conn = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
             conn.login(self.email_account, self.email_password)
-            conn.select("INBOX")
 
+            # 1. 获取原邮件发件人地址
+            conn.select("INBOX")
             original_sender = ""
             status, data = conn.fetch(mail_id.encode(), "(RFC822)")
             if status == "OK":
@@ -247,53 +261,38 @@ class EmailTools:
                 original_sender = msg.get("Reply-To", "") or msg.get("From", "")
             mime_msg["To"] = original_sender
 
-            # 2. 保存到 Gmail 草稿箱
-            draft_folder = "[Gmail]/Drafts"
-            conn.select(draft_folder)
-            append_status = conn.append(
-                draft_folder,
-                "\\Draft",
-                None,
-                mime_msg.as_bytes(),
-            )
+            # 2. 依次尝试草稿箱文件夹
+            folders_to_try = [draft_folder]
+            if fallback_folder:
+                folders_to_try.append(fallback_folder)
+
+            for folder in folders_to_try:
+                try:
+                    conn.select(folder)
+                    append_status = conn.append(
+                        folder, "\\Draft", None, mime_msg.as_bytes()
+                    )
+                    if append_status[0] == "OK":
+                        conn.logout()
+                        return json.dumps({
+                            "status": "success",
+                            "mail_id": mail_id,
+                            "subject": reply_subject,
+                            "to": original_sender,
+                            "draft_status": "saved_to_drafts",
+                            "message": f"回复草稿已保存到 {folder}，请登录邮箱审核后发送",
+                        }, ensure_ascii=False)
+                except Exception:
+                    continue
 
             conn.logout()
-
-            if append_status[0] == "OK":
-                return json.dumps({
-                    "status": "success",
-                    "mail_id": mail_id,
-                    "subject": reply_subject,
-                    "to": original_sender,
-                    "draft_status": "saved_to_drafts",
-                    "message": f"回复草稿已保存到草稿箱，请登录 Gmail 审核后发送",
-                }, ensure_ascii=False)
-            else:
-                return json.dumps({
-                    "status": "error",
-                    "message": f"保存草稿失败: {append_status[1]}",
-                }, ensure_ascii=False)
+            return json.dumps({
+                "status": "error",
+                "message": "所有草稿箱文件夹均无法写入",
+            }, ensure_ascii=False)
 
         except imaplib.IMAP4.error as e:
-            # 如果 [Gmail]/Drafts 不行，尝试普通 Drafts
-            try:
-                conn = imaplib.IMAP4_SSL(self.imap_server, self.imap_port)
-                conn.login(self.email_account, self.email_password)
-                conn.select("Drafts")
-                status, _ = conn.append(
-                    "Drafts", "\\Draft", None, mime_msg.as_bytes()
-                )
-                conn.logout()
-                if status == "OK":
-                    return json.dumps({
-                        "status": "success",
-                        "draft_status": "saved_to_drafts",
-                        "message": "回复草稿已保存到草稿箱",
-                    }, ensure_ascii=False)
-            except Exception:
-                pass
-
-            error_msg = f"保存草稿失败: {e}"
+            error_msg = f"IMAP连接失败: {e}"
             logger.error(error_msg)
             return json.dumps({
                 "status": "error",

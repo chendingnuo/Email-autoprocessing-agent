@@ -52,6 +52,8 @@ class ReActEngine:
         self.max_steps = max_steps
         self.deadlock_threshold = deadlock_threshold
         self.system_prompt_generator = system_prompt_generator
+        # 数据存储：Agent 可以用 data_store 工具持久化提取的业务数据
+        self._data_store: dict[str, Any] = {}
 
     # ── 主入口 ─────────────────────────────────────────
 
@@ -100,14 +102,24 @@ class ReActEngine:
             if step.type == StepType.TOOL_CALL and step.tool_call:
                 self._execute_tool_step(ctx, step)
             elif step.type == StepType.FINAL_ANSWER:
-                # 任务完成
-                self.state.complete_context(
-                    ctx,
-                    summary=step.final_answer[:2000],
-                )
-                logger.info(
-                    f"[{ctx.task_id}] 任务完成: {step.final_answer[:100]}..."
-                )
+                # 检测最终答案中是否包含需要人工介入的标记
+                fa = step.final_answer[:2000]
+                blocked_keywords = ["需要人工介入", "无法完成", "未能完成",
+                                    "请人工处理", "请手动处理", "操作失败", "写入失败"]
+                needs_intervention = any(kw in fa for kw in blocked_keywords)
+                if needs_intervention:
+                    self.state.block_context(
+                        ctx,
+                        reason=f"Agent报告需要人工介入: {fa[:300]}",
+                    )
+                    logger.warning(
+                        f"[{ctx.task_id}] 任务需人工介入: {fa[:100]}..."
+                    )
+                else:
+                    self.state.complete_context(ctx, summary=fa)
+                    logger.info(
+                        f"[{ctx.task_id}] 任务完成: {fa[:100]}..."
+                    )
                 return ctx
 
             # 滑动窗口压缩
@@ -129,7 +141,10 @@ class ReActEngine:
             return self.system_prompt_generator(self.tools, ctx)
 
         tool_descs = self.tools.generate_tool_descriptions()
-        extra_rules = []
+        extra_rules = [
+            "从邮件或附件中提取出结构化信息后，必须先调用 data_store 工具保存，"
+            "否则数据在后续步骤中可能丢失。",
+        ]
 
         if ctx.extracted_data:
             extra_rules.append(
@@ -226,6 +241,27 @@ class ReActEngine:
                     f"[{ctx.task_id}] 工具 {tool_call.tool_name} 执行成功 "
                     f"({executed.duration_ms:.0f}ms)"
                 )
+                # 记录已使用的工具（去重）
+                used = ctx.metadata.setdefault("used_tools", [])
+                if tool_call.tool_name not in used:
+                    used.append(tool_call.tool_name)
+                # 自动追踪已处理的邮件ID（来自 email_read 的结果）
+                if tool_call.tool_name == "email_read" and isinstance(obs, str):
+                    try:
+                        email_result = json.loads(obs)
+                        if email_result.get("status") == "success":
+                            ids = ctx.metadata.setdefault("processed_email_ids", [])
+                            for em in email_result.get("emails", []):
+                                eid = str(em.get("id", ""))
+                                if eid and eid not in ids:
+                                    ids.append(eid)
+                    except (json.JSONDecodeError, Exception):
+                        pass
+                # 同步 data_store 到上下文，使提取的数据在滑动窗口压缩后仍可恢复
+                if self._data_store:
+                    ctx.extracted_data.update(self._data_store)
+                    ctx.metadata.setdefault("extracted_fields", {}).update(self._data_store)
+                    self._data_store.clear()
             elif executed.status == ToolCallStatus.BLOCKED:
                 obs = f"工具调用被安全策略拦截: {executed.error_message}"
                 logger.warning(f"[{ctx.task_id}] {obs}")
@@ -247,7 +283,9 @@ class ReActEngine:
     def _track_tool_call_pattern(self, ctx: TaskContext, tc: ToolCall) -> None:
         """
         追踪工具调用模式，用于死循环检测。
-        同一工具、相同参数连续执行多次且结果无变化  → 判定为死循环。
+        检测两种模式：
+        1. 同一工具、相同参数连续执行 => 精确死循环
+        2. 同一工具出现次数超过阈值（不论参数）=> 宽泛死循环
         """
         last = ctx.last_tool_call
         if (
@@ -264,6 +302,26 @@ class ReActEngine:
                 )
         else:
             ctx.consecutive_identical_calls = 0
+
+        # 宽泛检测：同一工具累计出现太多次（不论参数）
+        call_history = ctx.metadata.setdefault("tool_call_history", [])
+        call_history.append(tc.tool_name)
+        # 保留最近20次记录
+        if len(call_history) > 20:
+            call_history[:] = call_history[-20:]
+
+        # 统计各工具出现次数
+        from collections import Counter
+        counts = Counter(call_history)
+        for tool_name, count in counts.items():
+            threshold = self.deadlock_threshold * 3  # 3倍阈值
+            if count >= threshold:
+                self.state.block_context(
+                    ctx,
+                    f"检测到死循环: 工具 '{tool_name}' 已连续出现 {count} 次 "
+                    f"(超过阈值 {threshold})，已自动阻断",
+                )
+                break
 
     def _handle_parse_error(self, ctx: TaskContext, error: ParseError) -> None:
         """处理解析错误：在上下文中注入纠正信息"""
