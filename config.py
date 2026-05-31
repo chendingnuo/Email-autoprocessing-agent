@@ -172,7 +172,7 @@ class LLMConfig:
 @dataclass
 class EngineConfig:
     """引擎配置"""
-    max_steps: int = int(os.getenv("AGENT_MAX_STEPS", "50"))
+    max_steps: int = int(os.getenv("AGENT_MAX_STEPS", "30"))
     deadlock_threshold: int = 3
     storage_dir: str = field(
         default_factory=lambda: os.getenv(
@@ -184,8 +184,10 @@ class EngineConfig:
         default_factory=lambda: os.getenv("AGENT_LOG_LEVEL", "INFO")
     )
     log_file: Optional[str] = field(
-        default_factory=lambda: os.getenv("AGENT_LOG_FILE", "")
-        or None
+        default_factory=lambda: os.getenv(
+            "AGENT_LOG_FILE",
+            os.path.join(os.getcwd(), "data", "logs", "agent.log"),
+        ) or None
     )
 
 

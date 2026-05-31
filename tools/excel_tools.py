@@ -24,6 +24,25 @@ class ExcelTools:
     def __init__(self, default_dir: str = ""):
         self.default_dir = default_dir or os.getcwd()
 
+    @staticmethod
+    def _get_sheet_name(full_path: Path, preferred: str = "Sheet1") -> str:
+        """
+        获取Excel文件中的实际工作表名。
+        优先使用 preferred，如果不存在则返回第一个工作表。
+        """
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(full_path, read_only=True)
+            names = wb.sheetnames
+            wb.close()
+            if preferred in names:
+                return preferred
+            if names:
+                return names[0]
+        except Exception:
+            pass
+        return preferred
+
     def read_records(self, file_path: str, sheet_name: str = "Sheet1") -> str:
         """
         读取指定表格的所有记录。
@@ -96,9 +115,11 @@ class ExcelTools:
             existing_data = None   # 现有数据
 
             if file_exists:
+                # 自动检测工作表名（兼容非 Sheet1 命名的文件）
+                sheet_name = self._get_sheet_name(full_path, "Sheet1")
                 # 读取所有行（不设header，保留原始结构）
                 all_data = pd.read_excel(
-                    full_path, sheet_name="Sheet1", dtype=str, header=None
+                    full_path, sheet_name=sheet_name, dtype=str, header=None
                 )
 
                 if len(all_data) > header_row:
@@ -162,7 +183,7 @@ class ExcelTools:
                 import openpyxl
                 wb = openpyxl.Workbook()
                 ws = wb.active
-                ws.title = "Sheet1"
+                ws.title = sheet_name if file_exists else "Sheet1"
 
                 # 写标题行
                 for r_idx, row in enumerate(pre_header_rows, 1):
@@ -186,7 +207,8 @@ class ExcelTools:
                 wb.close()
             else:
                 # 没有标题行，直接用 pandas 写
-                df.to_excel(full_path, sheet_name="Sheet1", index=False)
+                out_sheet = sheet_name if file_exists else "Sheet1"
+                df.to_excel(full_path, sheet_name=out_sheet, index=False)
 
             return json.dumps({
                 "status": "success",
@@ -279,7 +301,8 @@ class ExcelTools:
 
         try:
             import pandas as pd
-            df = pd.read_excel(full_path, sheet_name="Sheet1", dtype=str, header=header_row)
+            sheet_name = self._get_sheet_name(full_path, "Sheet1")
+            df = pd.read_excel(full_path, sheet_name=sheet_name, dtype=str, header=header_row)
             schema = {
                 "status": "success",
                 "columns": list(df.columns),
@@ -288,6 +311,7 @@ class ExcelTools:
                 "file_path": str(full_path),
                 "file_exists": True,
                 "header_row": header_row,
+                "sheet_name": sheet_name,
                 "note": "如果列名不准确（如'Unnamed'开头），请尝试调整header_row参数",
             }
             return json.dumps(schema, ensure_ascii=False)
@@ -361,7 +385,8 @@ class ExcelTools:
 
         try:
             import pandas as pd
-            df = pd.read_excel(full_path, sheet_name="Sheet1", dtype=str, header=header_row)
+            sheet_name = self._get_sheet_name(full_path, "Sheet1")
+            df = pd.read_excel(full_path, sheet_name=sheet_name, dtype=str, header=header_row)
 
             for _, existing_row in df.iterrows():
                 is_dup = True

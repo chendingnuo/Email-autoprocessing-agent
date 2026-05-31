@@ -80,10 +80,21 @@ class StateManager:
         用于滑动窗口策略：保留关键业务数据，丢弃冗余执行细节。
         """
         parts = []
+        # 关键业务数据（通过 data_store 保存的）
         if ctx.extracted_data:
             parts.append(f"已提取数据: {json.dumps(ctx.extracted_data, ensure_ascii=False)}")
+        # 已完成的步骤概览
         if ctx.current_step_count > 0:
             parts.append(f"已完成 {ctx.current_step_count} 步执行")
+        # 已处理的邮件
+        processed_ids = ctx.metadata.get("processed_email_ids", [])
+        if processed_ids:
+            parts.append(f"已处理邮件: {', '.join(str(e) for e in processed_ids)}")
+        # 已执行过的工具列表（去重）
+        used_tools = ctx.metadata.get("used_tools", [])
+        if used_tools:
+            parts.append(f"已使用工具: {', '.join(used_tools)}")
+        # 最近一次工具调用
         if ctx.last_tool_call:
             status = "成功" if ctx.last_tool_call.status.name == "SUCCESS" else "失败"
             parts.append(
