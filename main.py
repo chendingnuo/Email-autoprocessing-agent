@@ -159,7 +159,7 @@ if __name__ == "__main__":
     host = os.getenv("AGENT_HOST", "127.0.0.1")
     port = int(os.getenv("AGENT_PORT", "8000"))
 
-    print("\U0001f310 Web\u7ba1\u7406\u754c\u9762: http://{host}:{port}".format(host=host, port=port))
-    print("\U0001f4e1 API\u670d\u52a1: http://{host}:{port}/api".format(host=host, port=port))
+    print(f"  Web\u7ba1\u7406\u754c\u9762: http://{host}:{port}")
+    print(f"  API\u670d\u52a1: http://{host}:{port}/api")
     print()
     uvicorn.run(app, host=host, port=port, log_level="info")
