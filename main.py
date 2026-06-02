@@ -122,6 +122,52 @@ async def list_accounts():
     return {"accounts": accounts, "total": len(accounts)}
 
 
+# ── Excel 数据查询 ─────────────────────────────────────
+
+def _get_excel_header_row(filename: str) -> int:
+    """根据文件名判断正确的 header_row（0-indexed）"""
+    if "荣誉活动立项汇总表" in filename:
+        return 1  # 第1行标题，第2行表头
+    if "志愿者荣誉时数" in filename:
+        return 2  # 第1行标题，第2行说明，第3行表头
+    return 0
+
+
+@app.get("/api/excel/files")
+async def list_excel_files():
+    """列出所有可用的 Excel 文件"""
+    result = json.loads(orchestrator.tools["excel"].list_files())
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("message"))
+    return {"files": result.get("files", []), "total": result.get("total", 0)}
+
+
+@app.get("/api/excel/read")
+async def read_excel_data(file: str):
+    """读取指定 Excel 文件的全部记录"""
+    import pandas as pd
+    from pathlib import Path
+
+    data_dir = Path(orchestrator.config.data_dir)
+    header_row = _get_excel_header_row(file)
+    full_path = data_dir / file
+
+    if not full_path.exists():
+        raise HTTPException(status_code=404, detail=f"文件不存在: {file}")
+
+    try:
+        df = pd.read_excel(full_path, dtype=str, header=header_row)
+        records = df.fillna("").to_dict(orient="records")
+        return {
+            "file": file,
+            "columns": list(df.columns),
+            "records": records,
+            "total": len(records),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取失败: {e}")
+
+
 # ── 静态文件 ─────────────────────────────────────────
 
 _static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")

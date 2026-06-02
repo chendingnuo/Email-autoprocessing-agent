@@ -415,6 +415,35 @@ class Orchestrator:
 
     @staticmethod
     def _format_result(ctx: TaskContext) -> dict[str, Any]:
+        # 构建步骤级详情（包含 LLM 思考、工具调用、观察结果、最终回答）
+        step_details = []
+        for turn in ctx.conversation_history:
+            turn_data = {
+                "turn_index": turn.turn_index,
+                "llm_response": turn.response,
+            }
+            turn_steps = []
+            for step in turn.parsed_steps:
+                step_data: dict[str, Any] = {
+                    "index": step.step_index,
+                    "type": step.type.value,
+                    "thought": step.thought,
+                    "observation": step.observation,
+                    "final_answer": step.final_answer,
+                }
+                if step.tool_call:
+                    tc = step.tool_call
+                    step_data["tool_call"] = {
+                        "name": tc.tool_name,
+                        "parameters": tc.parameters,
+                        "result": tc.result,
+                        "status": tc.status.value if tc.status else "unknown",
+                        "error": tc.error_message,
+                    }
+                turn_steps.append(step_data)
+            turn_data["steps"] = turn_steps
+            step_details.append(turn_data)
+
         return {
             "task_id": ctx.task_id,
             "status": ctx.status.value,
@@ -422,6 +451,7 @@ class Orchestrator:
             "summary": ctx.summary or "",
             "error": ctx.error,
             "extracted_data": ctx.extracted_data,
+            "step_details": step_details,
         }
 
 

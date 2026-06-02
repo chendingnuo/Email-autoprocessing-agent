@@ -38,7 +38,8 @@ const App = {
         const titles = {
             dashboard: ['仪表盘', '系统概览与状态监控'],
             execute: ['任务执行', '提交自然语言任务让Agent自动处理'],
-            history: ['历史记录', '查看所有任务的执行历史'],
+            history: ['执行日志', '查看所有任务的执行历史'],
+            'excel-records': ['数据记录', '查看 Excel 表格数据'],
             tools: ['工具管理', '查看Agent可用的所有工具'],
         };
         const [title, subtitle] = titles[page] || ['未知页面', ''];
@@ -51,6 +52,7 @@ const App = {
             case 'dashboard': Dashboard.render(container); break;
             case 'execute': TaskExecute.render(container); break;
             case 'history': History.render(container); break;
+            case 'excel-records': ExcelRecords.render(container); break;
             case 'tools': Tools.render(container); break;
             default: container.innerHTML = '<p class="text-gray-400">页面不存在</p>';
         }
