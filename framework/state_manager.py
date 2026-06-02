@@ -48,6 +48,10 @@ class StateManager:
         self._contexts[ctx.task_id] = ctx
         self._persist(ctx)
 
+    def save_context(self, ctx: TaskContext) -> None:
+        """保存任务上下文（兼容 orchestrator 的调用）"""
+        self.update_context(ctx)
+
     def complete_context(
         self, ctx: TaskContext, summary: str = "", error: Optional[str] = None
     ) -> TaskContext:
@@ -181,9 +185,7 @@ class StateManager:
 
         summaries = []
         try:
-            for filename in sorted(
-                os.listdir(self.storage_dir), reverse=True
-            ):
+            for filename in os.listdir(self.storage_dir):
                 if not filename.endswith(".json"):
                     continue
                 path = os.path.join(self.storage_dir, filename)
@@ -202,9 +204,12 @@ class StateManager:
                     })
                 except Exception:
                     continue
-                if len(summaries) >= limit:
-                    break
         except Exception as e:
             logger.warning(f"列出历史任务失败: {e}")
 
-        return summaries
+        # 按 created_at 降序排列（ISO 8601 字符串可直接比较）
+        summaries.sort(
+            key=lambda s: s.get("created_at") or "",
+            reverse=True,
+        )
+        return summaries[:limit]
