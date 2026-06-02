@@ -109,7 +109,7 @@ const TaskExecute = {
                                 </svg>
                                 <div class="flex-1">
                                     <p class="font-medium text-green-800">任务已完成</p>
-                                    <p class="text-green-600 text-sm mt-1" id="summaryText"></p>
+                                    <div class="text-green-600 text-sm mt-1 markdown-body" id="summaryText"></div>
                                 </div>
                             </div>
                         </div>
@@ -315,7 +315,7 @@ const TaskExecute = {
         document.getElementById('errorState').classList.toggle('hidden', data.status !== 'failed');
 
         if (data.status === 'completed') {
-            document.getElementById('summaryText').textContent = data.summary || '任务已完成。';
+            document.getElementById('summaryText').innerHTML = this.renderMarkdown(data.summary || '任务已完成。');
             App.showToast('任务已完成', 'success');
         } else if (data.status === 'blocked') {
             document.getElementById('blockedReason').textContent = data.error || '需要人工审核处理';
