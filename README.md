@@ -15,6 +15,8 @@
 | **回复草稿生成** | 根据处理结果生成确认回复邮件，保存至 Gmail 草稿箱供人工审核 |
 | **Web 管理界面** | 提供浏览器操作界面，支持任务提交、结果查看、历史记录查询 |
 | **ReAct 智能决策** | 基于 LLM 的自主推理循环，自动判断处理流程和工具调用 |
+| **Excel 数据浏览** | 网页端直接查看 Excel 表格数据，支持多文件切换和自适应表头 |
+| **Markdown 结果渲染** | Agent 执行结果和步骤详情以 Markdown 格式渲染，步骤卡片展示 LLM 思考、工具调用与执行结果 |
 
 ---
 
@@ -122,6 +124,18 @@ python main.py
 
 打开浏览器访问 `http://127.0.0.1:8000` 即可进入管理界面。
 
+**Web 界面包含以下页面：**
+
+| 页面 | 说明 |
+|------|------|
+| **仪表盘** | 系统概览与状态监控 |
+| **任务执行** | 提交自然语言任务让 Agent 自动处理，实时轮询结果 |
+| **执行日志** | 查看所有任务的执行历史，支持筛选和搜索 |
+| **数据记录** | 以表格形式浏览 Excel 文件内容 |
+| **工具管理** | 查看 Agent 可用的所有工具列表 |
+
+> 任务执行结果中的 LLM 思考过程、工具调用参数和最终回答会以 **Markdown 格式**渲染为步骤卡片，便于阅读。
+
 ### 启动演示（无需 API）
 
 ```bash
@@ -138,8 +152,12 @@ python demo_workflow.py
 |------|------|------|
 | GET | `/api/health` | 健康检查 |
 | POST | `/api/tasks/execute` | 提交任务（异步执行） |
-| GET | `/api/tasks/{task_id}` | 查询任务状态和结果 |
-| GET | `/api/history` | 查看任务历史记录 |
+| GET | `/api/tasks/{task_id}` | 查询任务状态和结果（含 step_details 步骤详情） |
+| GET | `/api/tasks/history` | 查看任务历史记录 |
+| GET | `/api/excel/files` | 列出所有可用的 Excel 文件 |
+| GET | `/api/excel/read?file=xxx` | 读取指定 Excel 文件的全部记录 |
+| GET | `/api/accounts` | 列出所有已配置的邮箱账号 |
+| GET | `/api/tools` | 列出 Agent 可用的所有工具 |
 | GET | `/` | Web 管理界面 |
 
 ### 提交任务
@@ -169,6 +187,18 @@ curl http://127.0.0.1:8000/api/tasks/task_xxxx
 ├── .env                         # 环境变量配置（不含仓库）
 ├── .env.example                 # 环境变量模板
 ├── .gitignore                   # Git 忽略规则
+│
+├── static/                      # Web 静态资源
+│   ├── index.html               # SPA 入口页面
+│   ├── css/
+│   │   └── style.css            # 全局样式
+│   └── js/
+│       ├── app.js               # 核心路由、API 工具、UI 工具
+│       ├── dashboard.js         # 仪表盘页面
+│       ├── task-execute.js      # 任务执行页面（含 Markdown 步骤卡片）
+│       ├── history.js           # 执行日志页面
+│       ├── excel-records.js     # Excel 数据记录页面
+│       └── tools.js             # 工具管理页面
 │
 ├── framework/                   # ReAct 框架核心
 │   ├── engine.py                # ReAct 循环引擎（思考→行动→观察）
