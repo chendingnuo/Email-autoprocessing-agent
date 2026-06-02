@@ -326,30 +326,117 @@ const TaskExecute = {
             App.showToast('任务执行失败', 'error');
         }
 
-        // 步骤时间线
-        if (data.steps && data.steps > 0) {
+        // 步骤详情
+        if (data.step_details && data.step_details.length > 0) {
             const timeline = document.getElementById('stepTimeline');
             const stepList = document.getElementById('stepList');
             timeline.classList.remove('hidden');
+
+            let stepNum = 0;
             let html = '';
-            for (let i = 1; i <= data.steps; i++) {
-                const isLast = i === data.steps;
-                html += `
-                    <div class="step-line ${isLast ? '' : ''}">
-                        <div class="step-dot"></div>
-                        <div class="pb-4 text-sm">
-                            <span class="text-gray-500">步骤 ${i}</span>
-                            <span class="text-gray-300 mx-1">·</span>
-                            <span class="text-gray-400">${data.status === 'completed' ? '完成' : data.status === 'failed' ? '失败' : '-'}</span>
-                        </div>
-                    </div>
-                `;
-            }
+            data.step_details.forEach((turn) => {
+                turn.steps.forEach((step) => {
+                    stepNum++;
+                    const isFinalWithAnswer = !!step.final_answer;
+                    const isToolCall = !!step.tool_call;
+                    html += `<div class="mb-4 border border-gray-200 rounded-lg overflow-hidden shadow-sm step-card">`;
+
+                    // ── 步骤标题栏 ──
+                    const headerBg = isFinalWithAnswer ? 'bg-green-50' : 'bg-gray-50';
+                    html += `<div class="${headerBg} px-4 py-2.5 border-b border-gray-200 flex items-center gap-2">
+                        <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">${stepNum}</span>
+                        <span class="text-xs font-semibold text-gray-600">执行步骤 ${stepNum}</span>
+                        ${isFinalWithAnswer ? '<span class="ml-auto text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">最终回答</span>' : ''}
+                    </div>`;
+
+                    // ── LLM 思考 ──
+                    if (step.thought) {
+                        html += `
+                        <div class="bg-white px-4 py-3 border-b border-gray-100">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-sm">💭</span>
+                                <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">LLM 思考</span>
+                            </div>
+                            <div class="text-sm text-gray-700 markdown-body">
+                                ${this.renderMarkdown(step.thought)}
+                            </div>
+                        </div>`;
+                    }
+
+                    // ── 工具调用 ──
+                    if (step.tool_call) {
+                        const tc = step.tool_call;
+                        const isError = tc.status === 'failure' || tc.status === 'error';
+                        const isBlocked = tc.status === 'blocked';
+                        const bgColor = isError ? 'bg-red-50' : isBlocked ? 'bg-yellow-50' : 'bg-white';
+                        const badgeColor = isError ? 'bg-red-100 text-red-700' : isBlocked ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700';
+
+                        html += `
+                        <div class="${bgColor} px-4 py-3 border-b border-gray-100">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-sm">🔧</span>
+                                <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">工具调用</span>
+                                <span class="ml-auto text-xs px-2 py-0.5 rounded-full font-mono ${badgeColor}">${UI.escapeHtml(tc.name)}</span>
+                            </div>
+                            <details class="text-sm">
+                                <summary class="text-gray-400 cursor-pointer hover:text-gray-600 text-xs select-none">📋 查看参数</summary>
+                                <pre class="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">${UI.escapeHtml(JSON.stringify(tc.parameters, null, 2))}</pre>
+                            </details>
+                            ${tc.error ? `<div class="mt-2 text-xs text-red-600">${UI.escapeHtml(tc.error)}</div>` : ''}
+                        </div>`;
+
+                        // ── 执行结果 ──
+                        if (step.observation) {
+                            const obs = step.observation;
+                            const isLong = obs.length > 800;
+                            html += `
+                            <div class="bg-white px-4 py-3 border-b border-gray-100">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="text-sm">📊</span>
+                                    <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">执行结果</span>
+                                </div>
+                                <div class="text-sm text-gray-700 markdown-body observation-content ${isLong ? 'observation-truncated' : ''}">
+                                    ${this.renderMarkdown(obs)}
+                                </div>
+                                ${isLong ? '<button class="mt-1 text-xs text-blue-500 hover:text-blue-700 observation-toggle" onclick="this.previousElementSibling.classList.toggle(\'observation-truncated\'); this.textContent = this.previousElementSibling.classList.contains(\'observation-truncated\') ? \'展开全部 ▼\' : \'收起 ▲\'">展开全部 ▼</button>' : ''}
+                            </div>`;
+                        }
+                    }
+
+                    // ── 最终回答 ──
+                    if (step.final_answer) {
+                        html += `
+                        <div class="bg-green-50 px-4 py-3">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-sm">✅</span>
+                                <span class="text-xs font-medium text-green-600 uppercase tracking-wider">最终回答</span>
+                            </div>
+                            <div class="text-sm text-gray-700 markdown-body">
+                                ${this.renderMarkdown(step.final_answer)}
+                            </div>
+                        </div>`;
+                    }
+
+                    html += `</div>`;
+                });
+            });
+
             stepList.innerHTML = html;
         }
 
         // 原始数据
-        document.getElementById('rawResult').textContent = JSON.stringify(data, null, 2);
+        const rawDisplay = { ...data };
+        // step_details 保留在原始数据中以便调试
+        document.getElementById('rawResult').textContent = JSON.stringify(rawDisplay, null, 2);
+    },
+
+    renderMarkdown(text) {
+        if (!text) return '';
+        if (typeof marked !== 'undefined' && marked.parse) {
+            return marked.parse(text, { breaks: true });
+        }
+        // 降级：纯文本
+        return '<pre class="text-sm whitespace-pre-wrap">' + UI.escapeHtml(text) + '</pre>';
     },
 
     toggleDetails() {

@@ -135,8 +135,8 @@ const History = {
                         </svg>
                     </div>
                     <div class="history-detail hidden mt-3 pl-0">
-                        <div class="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                            <pre class="text-xs text-gray-600 overflow-x-auto max-h-60 overflow-y-auto custom-scrollbar" id="detail-${t.task_id}">加载中...</pre>
+                        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden" id="detail-${t.task_id}">
+                            <div class="text-center py-8 text-sm text-gray-400">加载中...</div>
                         </div>
                     </div>
                 </div>
@@ -161,25 +161,109 @@ const History = {
         arrow.classList.toggle('open');
 
         if (isOpening) {
-            const pre = document.getElementById('detail-' + taskId);
+            const container = document.getElementById('detail-' + taskId);
             try {
                 const data = await API.get('/api/tasks/' + taskId);
-                // 格式化显示
-                const display = {
-                    task_id: data.task_id,
-                    status: data.status,
-                    steps: data.steps,
-                    summary: data.summary,
-                    error: data.error,
-                    extracted_data: data.extracted_data,
-                    created_at: data.created_at,
-                    completed_at: data.completed_at,
-                };
-                pre.textContent = JSON.stringify(display, null, 2);
+                if (data.step_details && data.step_details.length > 0) {
+                    let html = '<div class="divide-y divide-gray-100">';
+
+                    // 摘要信息
+                    html += `
+                        <div class="px-4 py-3 bg-gray-50 flex items-center gap-4 text-xs text-gray-500">
+                            <span>状态: ${data.status}</span>
+                            <span>${data.steps || 0} 步</span>
+                            ${data.created_at ? `<span>${UI.formatTime(data.created_at)}</span>` : ''}
+                            ${data.completed_at ? `<span>→ ${UI.formatTime(data.completed_at)}</span>` : ''}
+                        </div>`;
+
+                    // 步骤卡片
+                    let stepNum = 0;
+                    data.step_details.forEach((turn) => {
+                        turn.steps.forEach((step) => {
+                            stepNum++;
+                            const isFinal = !!step.final_answer;
+                            html += `<div class="px-4 py-3">`;
+                            html += `<div class="text-xs font-semibold text-gray-500 mb-2">步骤 ${stepNum}</div>`;
+
+                            if (step.thought) {
+                                html += `
+                                <div class="mb-2">
+                                    <div class="text-xs text-gray-400 mb-0.5">💭 思考</div>
+                                    <div class="text-sm text-gray-700 markdown-body">${History.renderMarkdown(step.thought)}</div>
+                                </div>`;
+                            }
+
+                            if (step.tool_call) {
+                                const tc = step.tool_call;
+                                html += `
+                                <div class="mb-2">
+                                    <div class="text-xs text-gray-400 mb-0.5">🔧 工具: <span class="font-mono text-blue-600">${UI.escapeHtml(tc.name)}</span></div>
+                                    <details class="text-xs">
+                                        <summary class="text-gray-400 cursor-pointer hover:text-gray-600">查看参数</summary>
+                                        <pre class="mt-1 p-2 bg-gray-100 rounded overflow-x-auto">${UI.escapeHtml(JSON.stringify(tc.parameters, null, 2))}</pre>
+                                    </details>
+                                </div>`;
+
+                                if (step.observation) {
+                                    const obs = step.observation;
+                                    const shortObs = obs.length > 500 ? obs.slice(0, 500) + '...' : obs;
+                                    html += `
+                                    <div class="mb-2">
+                                        <div class="text-xs text-gray-400 mb-0.5">📊 结果</div>
+                                        <div class="text-sm text-gray-700 markdown-body max-h-40 overflow-y-auto">${History.renderMarkdown(obs)}</div>
+                                    </div>`;
+                                }
+                            }
+
+                            if (step.final_answer) {
+                                html += `
+                                <div class="mb-2">
+                                    <div class="text-xs text-green-600 mb-0.5">✅ 最终回答</div>
+                                    <div class="text-sm text-gray-700 markdown-body">${History.renderMarkdown(step.final_answer)}</div>
+                                </div>`;
+                            }
+
+                            html += `</div>`;
+                        });
+                    });
+
+                    // 原始 JSON（折叠）
+                    html += `
+                        <div class="px-4 py-3 bg-gray-50 border-t border-gray-100">
+                            <details>
+                                <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none">查看原始数据</summary>
+                                <pre class="mt-2 text-xs text-gray-600 overflow-x-auto max-h-40 overflow-y-auto">${UI.escapeHtml(JSON.stringify({task_id: data.task_id, status: data.status, steps: data.steps, summary: data.summary, error: data.error}, null, 2))}</pre>
+                            </details>
+                        </div>`;
+
+                    html += '</div>';
+                    container.innerHTML = html;
+                } else {
+                    // 无步骤详情，显示概要信息
+                    const display = {
+                        task_id: data.task_id,
+                        status: data.status,
+                        steps: data.steps,
+                        summary: data.summary,
+                        error: data.error,
+                        extracted_data: data.extracted_data,
+                        created_at: data.created_at,
+                        completed_at: data.completed_at,
+                    };
+                    container.innerHTML = `<pre class="text-xs text-gray-600 p-4 overflow-x-auto max-h-60 overflow-y-auto">${UI.escapeHtml(JSON.stringify(display, null, 2))}</pre>`;
+                }
             } catch {
-                pre.textContent = '加载失败';
+                container.innerHTML = '<div class="text-center py-8 text-sm text-red-400">加载失败</div>';
             }
         }
+    },
+
+    renderMarkdown(text) {
+        if (!text) return '';
+        if (typeof marked !== 'undefined' && marked.parse) {
+            return marked.parse(text, { breaks: true });
+        }
+        return '<pre class="text-sm whitespace-pre-wrap">' + UI.escapeHtml(text) + '</pre>';
     },
 
     prevPage() {
