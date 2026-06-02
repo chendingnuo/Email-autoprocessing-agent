@@ -11,13 +11,28 @@ const TaskExecute = {
                     <textarea id="taskInput" rows="3"
                         class="flex-1 px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-sm"
                         placeholder="例如：处理最近收到的立项申请邮件..."></textarea>
-                    <button id="executeBtn" onclick="TaskExecute.run()"
-                        class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shrink-0 flex items-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <div class="shrink-0 flex flex-col gap-2">
+                        <button id="executeBtn" onclick="TaskExecute.run()"
+                            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                            </svg>
+                            执行
+                        </button>
+                    </div>
+                </div>
+                <!-- 邮箱选择行 -->
+                <div class="flex items-center gap-3 mt-4 pt-4 border-t border-gray-50">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                         </svg>
-                        执行
-                    </button>
+                        <span class="text-sm text-gray-500">使用邮箱:</span>
+                    </div>
+                    <select id="emailAccountSelect" class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white">
+                        <option value="">自动选择（默认）</option>
+                    </select>
+                    <span class="text-xs text-gray-400">选中的邮箱会作为指令传递给 Agent</span>
                 </div>
                 <p class="text-xs text-gray-400 mt-2">按 Ctrl+Enter 快速执行</p>
             </div>
@@ -156,6 +171,28 @@ const TaskExecute = {
                 this.run();
             }
         });
+
+        // 加载邮箱列表到下拉框
+        this.loadAccounts();
+    },
+
+    async loadAccounts() {
+        try {
+            const data = await API.get('/api/accounts');
+            const select = document.getElementById('emailAccountSelect');
+            if (!select) return;
+            // 保留第一个 option（自动选择），清空其余
+            select.innerHTML = '<option value="">自动选择（默认）</option>';
+            (data.accounts || []).forEach(acc => {
+                if (!acc.configured) return;
+                const opt = document.createElement('option');
+                opt.value = acc.name;
+                opt.textContent = `${acc.name} (${acc.email})`;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            // 静默失败，不影响主功能
+        }
     },
 
     quick(text) {
@@ -183,7 +220,10 @@ const TaskExecute = {
 
         try {
             // 提交任务
-            const initData = await API.post('/api/tasks/execute', { request: text });
+            const account = document.getElementById('emailAccountSelect')?.value || '';
+            const body = { request: text };
+            if (account) body.account = account;
+            const initData = await API.post('/api/tasks/execute', body);
             const taskId = initData.task_id;
 
             const idLabel = document.getElementById('taskIdLabel');

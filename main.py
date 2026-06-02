@@ -62,14 +62,15 @@ async def execute_task(request: Request):
     立即返回 task_id，前端通过轮询 /api/tasks/{task_id} 获取结果。
 
     Request body:
-        {"request": "处理今天的活动申请邮件"}
+        {"request": "处理今天的活动申请邮件", "account": "gmail"}
     """
     body = await request.json()
     user_request = body.get("request", "")
     if not user_request:
         raise HTTPException(status_code=400, detail="缺少 request 字段")
 
-    task_id = orchestrator.execute_async(user_request)
+    account = body.get("account", "") or ""
+    task_id = orchestrator.execute_async(user_request, account=account)
     return {"task_id": task_id, "status": "running"}
 
 

@@ -77,10 +77,28 @@ class Orchestrator:
         ctx = self.engine.run(user_request, **kwargs)
         return self._format_result(ctx)
 
-    def execute_async(self, user_request: str) -> str:
+    def execute_async(self, user_request: str, account: str = "") -> str:
         """
         异步执行任务，立即返回 task_id。
+
+        Args:
+            user_request: 用户任务描述
+            account: 指定使用的邮箱账号名（如 "gmail", "qq"），为空则让 LLM 自行选择
         """
+        # 如果指定了邮箱，注入到用户指令中引导 LLM
+        if account:
+            account_info = ""
+            for name, inst in self._email_instances.items():
+                if name == account:
+                    account_info = f"{name}({inst.email_account})"
+                    break
+            if account_info:
+                user_request = (
+                    f"【邮箱指示】请使用 {account_info} 处理邮件任务。"
+                    f"后续所有邮件读取和发送操作都必须使用 {account} 邮箱。\n\n"
+                    f"{user_request}"
+                )
+
         try:
             self.security.sanitize_user_input(user_request)
         except Exception as e:
