@@ -77,10 +77,28 @@ class Orchestrator:
         ctx = self.engine.run(user_request, **kwargs)
         return self._format_result(ctx)
 
-    def execute_async(self, user_request: str) -> str:
+    def execute_async(self, user_request: str, account: str = "") -> str:
         """
         异步执行任务，立即返回 task_id。
+
+        Args:
+            user_request: 用户任务描述
+            account: 指定使用的邮箱账号名（如 "gmail", "qq"），为空则让 LLM 自行选择
         """
+        # 如果指定了邮箱，注入到用户指令中引导 LLM
+        if account:
+            account_info = ""
+            for name, inst in self._email_instances.items():
+                if name == account:
+                    account_info = f"{name}({inst.email_account})"
+                    break
+            if account_info:
+                user_request = (
+                    f"【邮箱指示】请使用 {account_info} 处理邮件任务。"
+                    f"后续所有邮件读取和发送操作都必须使用 {account} 邮箱。\n\n"
+                    f"{user_request}"
+                )
+
         try:
             self.security.sanitize_user_input(user_request)
         except Exception as e:
@@ -107,12 +125,36 @@ class Orchestrator:
                 user_request=ctx.user_request,
                 context=ctx,
             )
+            # 任务完成后，标记已处理的邮件
+            if ctx.status == TaskStatus.COMPLETED:
+                self._mark_processed_emails(ctx)
         except Exception as e:
             ctx.status = TaskStatus.FAILED
             ctx.error = f"{type(e).__name__}: {e}"
             import traceback
             ctx.summary = traceback.format_exc()[:500]
             self.state.save_context(ctx)
+
+    def _mark_processed_emails(self, ctx: TaskContext) -> None:
+        """根据任务上下文标记已处理的邮件"""
+        processed_emails = ctx.metadata.get("processed_emails", [])
+        
+        for email_info in processed_emails:
+            email_id = email_info.get("id")
+            subject = email_info.get("subject", "")
+            task_type = email_info.get("task_type", "unknown")
+            
+            if email_id and self.tools.get("email"):
+                try:
+                    self.tools["email"].mark_email_processed(
+                        email_id=email_id,
+                        subject=subject,
+                        task_type=task_type,
+                        status="success"
+                    )
+                    logger.info(f"已标记邮件为已处理: {email_id} ({task_type})")
+                except Exception as e:
+                    logger.error(f"标记邮件失败: {e}")
 
     def get_result(self, task_id: str) -> dict[str, Any]:
         return self._get_task_result(task_id)
@@ -196,7 +238,7 @@ class Orchestrator:
                 f"邮箱账号已加载: [{acct_name}] {acct_cfg.email} ({acct_cfg.provider})"
             )
 
-        default_inst = self._email_instances.get("default")
+        default_inst = self._email_instances.get("qq")
 
         return {
             "email": default_inst,
@@ -246,11 +288,21 @@ class Orchestrator:
                 "优先读取未读邮件，如果没有未读邮件则自动返回最近的邮件。"
                 "返回邮件列表，包含发件人、主题、正文预览、附件信息（文件名和保存路径）。"
                 "如有附件（.docx），附件保存在 saved_path 字段中，可后续调用 doc_parse_attachment 解析。\n\n"
+                "【任务类型过滤】\n"
+                "系统会自动检测邮件属于哪种任务类型：\n"
+                "  • volunteer_hours：荣誉时数录入相关（关键词：荣誉时数、志愿者时长、时长导入等）\n"
+                "  • volunteer_project：志愿项目立项相关（关键词：立项、项目申请、活动申请等）\n"
+                "  • unknown：其他类型\n\n"
+                "可在 task_type 参数中指定任务类型，系统会自动过滤并跳过不匹配的邮件。\n"
+                "如果指定了 task_type，系统会自动跳过已经处理过的邮件，避免重复处理。\n\n"
+                "⚠️ 重要：此工具一次可返回多封邮件。当返回多封邮件时，你必须逐封处理完所有邮件，"
+                "不得只处理第一封就结束。每处理完一封继续处理下一封，全部处理完毕后再给出最终回答。\n\n"
                 f"可用邮箱: {account_list_str}\n"
-                "account 参数指定用哪个邮箱读取，不传则使用默认邮箱。"
+                "account 参数指定用哪个邮箱读取，不传则使用默认邮箱。\n"
+                "limit 参数控制最大读取封数，不传则默认10封。"
             ),
-            fn=lambda account="default", limit=10: _email_dispatch(
-                account, "read_unread", limit=limit
+            fn=lambda account="default", limit=10, task_type="": _email_dispatch(
+                account, "read_unread", limit=limit, batch_mode=False, task_type=task_type
             ),
         )
 
@@ -364,10 +416,68 @@ class Orchestrator:
             require_confirmation=True,
         )
 
+        # ── 数据持久化工具 ─────────────────────────────
+
+        tool_registry.register_from_callable(
+            name="data_store",
+            description=(
+                "将当前步骤提取的业务数据持久化到任务上下文。"
+                "每次从邮件或附件中提取出结构化信息后，必须立即调用此工具保存。"
+                "参数 data 是一个字典，包含提取的字段名和字段值。"
+                "例如：从立项申请书中提取到活动名称、负责人等信息后，"
+                "调用 data_store(data={'活动名称': 'xxx', '负责人': 'xxx'}) 保存。"
+                "保存后的数据会显示在后续系统提示中，避免重复提取。"
+            ),
+            fn=lambda data: self._store_extracted(data),
+        )
+
         logger.info(f"已注册 {len(tool_registry.list_tools())} 个工具")
+
+    def _store_extracted(self, data: dict) -> str:
+        """持久化提取的业务数据到引擎上下文"""
+        if not isinstance(data, dict):
+            return json.dumps({
+                "status": "error",
+                "message": "data 参数必须是字典类型",
+            }, ensure_ascii=False)
+        self.engine._data_store.update(data)
+        return json.dumps({
+            "status": "success",
+            "message": f"已存储 {len(data)} 个字段: {', '.join(data.keys())}",
+            "stored_fields": list(data.keys()),
+        }, ensure_ascii=False)
 
     @staticmethod
     def _format_result(ctx: TaskContext) -> dict[str, Any]:
+        # 构建步骤级详情（包含 LLM 思考、工具调用、观察结果、最终回答）
+        step_details = []
+        for turn in ctx.conversation_history:
+            turn_data = {
+                "turn_index": turn.turn_index,
+                "llm_response": turn.response,
+            }
+            turn_steps = []
+            for step in turn.parsed_steps:
+                step_data: dict[str, Any] = {
+                    "index": step.step_index,
+                    "type": step.type.value,
+                    "thought": step.thought,
+                    "observation": step.observation,
+                    "final_answer": step.final_answer,
+                }
+                if step.tool_call:
+                    tc = step.tool_call
+                    step_data["tool_call"] = {
+                        "name": tc.tool_name,
+                        "parameters": tc.parameters,
+                        "result": tc.result,
+                        "status": tc.status.value if tc.status else "unknown",
+                        "error": tc.error_message,
+                    }
+                turn_steps.append(step_data)
+            turn_data["steps"] = turn_steps
+            step_details.append(turn_data)
+
         return {
             "task_id": ctx.task_id,
             "status": ctx.status.value,
@@ -375,6 +485,7 @@ class Orchestrator:
             "summary": ctx.summary or "",
             "error": ctx.error,
             "extracted_data": ctx.extracted_data,
+            "step_details": step_details,
         }
 
 

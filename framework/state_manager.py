@@ -48,6 +48,10 @@ class StateManager:
         self._contexts[ctx.task_id] = ctx
         self._persist(ctx)
 
+    def save_context(self, ctx: TaskContext) -> None:
+        """保存任务上下文（兼容 orchestrator 的调用）"""
+        self.update_context(ctx)
+
     def complete_context(
         self, ctx: TaskContext, summary: str = "", error: Optional[str] = None
     ) -> TaskContext:
@@ -80,10 +84,21 @@ class StateManager:
         用于滑动窗口策略：保留关键业务数据，丢弃冗余执行细节。
         """
         parts = []
+        # 关键业务数据（通过 data_store 保存的）
         if ctx.extracted_data:
             parts.append(f"已提取数据: {json.dumps(ctx.extracted_data, ensure_ascii=False)}")
+        # 已完成的步骤概览
         if ctx.current_step_count > 0:
             parts.append(f"已完成 {ctx.current_step_count} 步执行")
+        # 已处理的邮件
+        processed_ids = ctx.metadata.get("processed_email_ids", [])
+        if processed_ids:
+            parts.append(f"已处理邮件: {', '.join(str(e) for e in processed_ids)}")
+        # 已执行过的工具列表（去重）
+        used_tools = ctx.metadata.get("used_tools", [])
+        if used_tools:
+            parts.append(f"已使用工具: {', '.join(used_tools)}")
+        # 最近一次工具调用
         if ctx.last_tool_call:
             status = "成功" if ctx.last_tool_call.status.name == "SUCCESS" else "失败"
             parts.append(
@@ -155,7 +170,7 @@ class StateManager:
             logger.warning(f"恢复任务 {task_id} 失败: {e}")
             return None
 
-    def list_task_summaries(self, limit: int = 20) -> list[dict]:
+    def list_task_summaries(self, limit: int = 20) -> tuple[list[dict], int]:
         """
         列出最近的已完成任务摘要列表（用于前端历史记录）。
 
@@ -163,16 +178,14 @@ class StateManager:
             limit: 最大返回条数
 
         Returns:
-            list[dict]: 按创建时间降序排列的任务摘要
+            tuple: (按创建时间降序排列的任务摘要列表, 总任务数)
         """
         if not self.storage_dir or not os.path.exists(self.storage_dir):
-            return []
+            return [], 0
 
         summaries = []
         try:
-            for filename in sorted(
-                os.listdir(self.storage_dir), reverse=True
-            ):
+            for filename in os.listdir(self.storage_dir):
                 if not filename.endswith(".json"):
                     continue
                 path = os.path.join(self.storage_dir, filename)
@@ -191,9 +204,14 @@ class StateManager:
                     })
                 except Exception:
                     continue
-                if len(summaries) >= limit:
-                    break
         except Exception as e:
             logger.warning(f"列出历史任务失败: {e}")
 
-        return summaries
+        total = len(summaries)
+
+        # 按 created_at 降序排列（ISO 8601 字符串可直接比较）
+        summaries.sort(
+            key=lambda s: s.get("created_at") or "",
+            reverse=True,
+        )
+        return summaries[:limit], total
