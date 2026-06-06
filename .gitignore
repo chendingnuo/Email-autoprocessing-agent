@@ -18,6 +18,13 @@ build/
 data/tasks/
 # 邮件附件下载缓存
 data/attachments/
+# Excel 运行时变更（避免 Git 追踪表格数据变动）
+data/*.xlsx
+
+# ── 前端依赖（本地自托管）────────────────────────────
+static/node_modules/
+static/package.json
+static/package-lock.json
 
 # ── IDE / 编辑器 ─────────────────────────────────────
 .vscode/

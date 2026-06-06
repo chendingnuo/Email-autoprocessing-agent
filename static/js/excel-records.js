@@ -5,72 +5,73 @@ const ExcelRecords = {
     render(container) {
         container.innerHTML = `
             <!-- 文件选择 -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-                <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                    <div class="flex items-center gap-3 w-full sm:w-auto">
-                        <svg class="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="card" style="margin-bottom:28px;">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">
+                    <div style="display:flex;align-items:center;gap:12px;flex:1;">
+                        <svg style="width:20px;height:20px;color:#9CA3B0;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                         </svg>
-                        <span class="text-sm font-medium text-gray-700">选择表格</span>
+                        <span style="font-size:0.8125rem;font-weight:500;color:#2A2A33;white-space:nowrap;">选择表格</span>
                         <select id="excelFileSelect"
-                            class="flex-1 sm:flex-none text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white min-w-[240px]"
+                            class="input-field"
+                            style="flex:1;min-width:200px;padding:8px 14px;font-size:0.8125rem;"
                             onchange="ExcelRecords.onFileChange(this.value)">
                             <option value="">-- 请选择 --</option>
                         </select>
                         <button onclick="ExcelRecords.loadFiles()"
-                            class="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-100 flex items-center gap-1.5">
+                            class="btn-secondary" style="display:flex;align-items:center;gap:6px;padding:8px 16px;font-size:0.8125rem;cursor:pointer;white-space:nowrap;">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                             </svg>
                             刷新
                         </button>
                     </div>
-                    <span id="excelRecordCount" class="text-xs text-gray-400"></span>
+                    <span id="excelRecordCount" style="font-size:0.75rem;color:#9CA3B0;white-space:nowrap;"></span>
                 </div>
             </div>
 
             <!-- 加载状态 -->
             <div id="excelLoading" class="hidden">
-                <div class="flex items-center justify-center py-16">
-                    <div class="flex items-center gap-3">
-                        <div class="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent"></div>
-                        <span class="text-sm text-gray-500">正在加载数据...</span>
+                <div style="display:flex;align-items:center;justify-content:center;padding:64px 0;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div class="animate-spin rounded-full h-6 w-6" style="border:2px solid;border-color:#609FFF transparent transparent transparent;"></div>
+                        <span style="font-size:0.8125rem;color:#787A86;">正在加载数据...</span>
                     </div>
                 </div>
             </div>
 
             <!-- 空状态 -->
             <div id="excelEmpty" class="hidden">
-                <div class="text-center py-16">
-                    <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div style="text-align:center;padding:64px 0;">
+                    <svg style="width:48px;height:48px;color:#D1D5DB;margin:0 auto 12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    <p class="text-gray-400 text-sm">请选择一个表格文件查看数据</p>
+                    <p style="color:#9CA3B0;font-size:0.8125rem;">请选择一个表格文件查看数据</p>
                 </div>
             </div>
 
             <!-- 错误状态 -->
             <div id="excelError" class="hidden">
-                <div class="flex items-start gap-3 p-4 bg-red-50 rounded-lg border border-red-100">
-                    <svg class="w-5 h-5 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div style="display:flex;align-items:flex-start;gap:12px;padding:16px 20px;background:#FEF2F2;border-radius:20px;">
+                    <svg class="w-5 h-5" style="color:#F87171;margin-top:2px;flex-shrink:0;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>
                     </svg>
                     <div>
-                        <p class="font-medium text-red-800">加载失败</p>
-                        <p class="text-red-600 text-sm mt-1" id="excelErrorMessage"></p>
+                        <p style="font-weight:600;color:#991B1B;">加载失败</p>
+                        <p style="color:#DC2626;font-size:0.8125rem;margin-top:4px;" id="excelErrorMessage"></p>
                     </div>
                 </div>
             </div>
 
             <!-- 数据表格 -->
             <div id="excelTableContainer" class="hidden">
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="table-container">
                     <div class="overflow-x-auto custom-scrollbar">
-                        <table class="w-full text-sm" id="excelDataTable">
+                        <table id="excelDataTable">
                             <thead id="excelTableHead">
-                                <tr class="bg-gray-50 border-b border-gray-100"></tr>
+                                <tr></tr>
                             </thead>
-                            <tbody id="excelTableBody" class="divide-y divide-gray-50"></tbody>
+                            <tbody id="excelTableBody"></tbody>
                         </table>
                     </div>
                 </div>
@@ -149,20 +150,20 @@ const ExcelRecords = {
         // 表头
         let headerHtml = '';
         columns.forEach(col => {
-            headerHtml += `<th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">${UI.escapeHtml(col)}</th>`;
+            headerHtml += `<th>${UI.escapeHtml(col)}</th>`;
         });
         thead.innerHTML = headerHtml;
 
         // 数据行
         if (records.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${columns.length || 1}" class="px-4 py-12 text-center text-gray-400">暂无数据</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${columns.length || 1}" style="padding:48px 16px;text-align:center;color:#9CA3B0;font-size:0.8125rem;">暂无数据</td></tr>`;
         } else {
             let bodyHtml = '';
             records.forEach((row, idx) => {
-                bodyHtml += `<tr class="${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:bg-blue-50/50 transition-colors">`;
+                bodyHtml += `<tr style="transition:background 0.12s ease;">`;
                 columns.forEach(col => {
                     const val = row[col] !== undefined && row[col] !== null ? String(row[col]) : '';
-                    bodyHtml += `<td class="px-4 py-2.5 text-sm text-gray-700 whitespace-nowrap max-w-[300px] truncate" title="${UI.escapeHtml(val)}">${UI.escapeHtml(val) || '<span class="text-gray-300">-</span>'}</td>`;
+                    bodyHtml += `<td title="${UI.escapeHtml(val)}">${UI.escapeHtml(val) || '<span style="color:#D1D5DB;">-</span>'}</td>`;
                 });
                 bodyHtml += '</tr>';
             });

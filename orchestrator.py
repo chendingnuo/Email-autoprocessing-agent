@@ -264,8 +264,11 @@ class Orchestrator:
                 "优先读取未读邮件，如果没有未读邮件则自动返回最近的邮件。"
                 "返回邮件列表，包含发件人、主题、正文预览、附件信息（文件名和保存路径）。"
                 "如有附件（.docx），附件保存在 saved_path 字段中，可后续调用 doc_parse_attachment 解析。\n\n"
+                "⚠️ 重要：此工具一次可返回多封邮件。当返回多封邮件时，你必须逐封处理完所有邮件，"
+                "不得只处理第一封就结束。每处理完一封继续处理下一封，全部处理完毕后再给出最终回答。\n\n"
                 f"可用邮箱: {account_list_str}\n"
                 "account 参数指定用哪个邮箱读取，不传则使用默认邮箱。"
+                "limit 参数控制最大读取封数，不传则默认10封。"
             ),
             fn=lambda account="default", limit=10: _email_dispatch(
                 account, "read_unread", limit=limit

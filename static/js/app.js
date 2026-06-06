@@ -73,14 +73,16 @@ const App = {
             const dot = document.getElementById('sidebarStatus');
             const text = document.getElementById('sidebarStatusText');
             if (data.status === 'ok') {
-                dot.className = 'w-2 h-2 rounded-full bg-green-500';
+                dot.style.background = '#86D997';
                 text.textContent = data.warnings?.length ? `运行中 (${data.warnings.length}项警告)` : '系统正常';
-                text.className = 'text-sm text-green-600';
+                text.style.color = '#86D997';
+                text.className = 'text-sm';
             }
         } catch {
-            document.getElementById('sidebarStatus').className = 'w-2 h-2 rounded-full bg-red-400';
+            document.getElementById('sidebarStatus').style.background = '#F87171';
             document.getElementById('sidebarStatusText').textContent = '无法连接';
-            document.getElementById('sidebarStatusText').className = 'text-sm text-red-400';
+            document.getElementById('sidebarStatusText').style.color = '#F87171';
+            document.getElementById('sidebarStatusText').className = 'text-sm';
         }
     },
 
@@ -95,9 +97,9 @@ const App = {
         const msg = document.getElementById('toastMessage');
 
         const icons = {
-            success: '<svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
-            error: '<svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>',
-            info: '<svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+            success: '<svg class="w-5 h-5" style="color:#86D997" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+            error: '<svg class="w-5 h-5" style="color:#F87171" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>',
+            info: '<svg class="w-5 h-5" style="color:#609FFF" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
         };
 
         icon.innerHTML = icons[type] || icons.info;
@@ -162,12 +164,12 @@ const UI = {
 
     statusBadge(status) {
         const map = {
-            completed: '<span class="status-badge bg-green-100 text-green-700">✓ 已完成</span>',
-            failed: '<span class="status-badge bg-red-100 text-red-700">✗ 失败</span>',
-            blocked: '<span class="status-badge bg-yellow-100 text-yellow-700">⚠ 需人工介入</span>',
-            running: '<span class="status-badge bg-blue-100 text-blue-700">● 运行中</span>',
+            completed: '<span class="badge badge-success">✓ 已完成</span>',
+            failed: '<span class="badge badge-error">✗ 失败</span>',
+            blocked: '<span class="badge badge-warning">⚠ 需人工介入</span>',
+            running: '<span class="badge badge-info">● 运行中</span>',
         };
-        return map[status] || `<span class="status-badge bg-gray-100 text-gray-700">${status}</span>`;
+        return map[status] || `<span class="badge badge-muted">${status}</span>`;
     },
 
     escapeHtml(str) {
