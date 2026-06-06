@@ -170,7 +170,7 @@ class StateManager:
             logger.warning(f"恢复任务 {task_id} 失败: {e}")
             return None
 
-    def list_task_summaries(self, limit: int = 20) -> list[dict]:
+    def list_task_summaries(self, limit: int = 20) -> tuple[list[dict], int]:
         """
         列出最近的已完成任务摘要列表（用于前端历史记录）。
 
@@ -178,10 +178,10 @@ class StateManager:
             limit: 最大返回条数
 
         Returns:
-            list[dict]: 按创建时间降序排列的任务摘要
+            tuple: (按创建时间降序排列的任务摘要列表, 总任务数)
         """
         if not self.storage_dir or not os.path.exists(self.storage_dir):
-            return []
+            return [], 0
 
         summaries = []
         try:
@@ -207,9 +207,11 @@ class StateManager:
         except Exception as e:
             logger.warning(f"列出历史任务失败: {e}")
 
+        total = len(summaries)
+
         # 按 created_at 降序排列（ISO 8601 字符串可直接比较）
         summaries.sort(
             key=lambda s: s.get("created_at") or "",
             reverse=True,
         )
-        return summaries[:limit]
+        return summaries[:limit], total

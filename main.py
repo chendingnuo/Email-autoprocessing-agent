@@ -52,6 +52,10 @@ async def health_check():
         "status": "ok",
         "version": "1.0.0",
         "warnings": warnings,
+        "llm": {
+            "provider": config.llm.provider,
+            "model": config.llm.model,
+        },
     }
 
 
@@ -77,8 +81,8 @@ async def execute_task(request: Request):
 @app.get("/api/tasks/history")
 async def list_task_history(limit: int = 20):
     """获取历史任务记录列表（放在通配路由前以避免被捕获）"""
-    summaries = orchestrator.state.list_task_summaries(limit=limit)
-    return {"tasks": summaries, "total": len(summaries)}
+    summaries, total = orchestrator.state.list_task_summaries(limit=limit)
+    return {"tasks": summaries, "total": total}
 
 
 @app.get("/api/tasks/{task_id}")

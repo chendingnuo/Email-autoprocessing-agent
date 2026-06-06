@@ -144,6 +144,9 @@ class ReActEngine:
         extra_rules = [
             "从邮件或附件中提取出结构化信息后，必须先调用 data_store 工具保存，"
             "否则数据在后续步骤中可能丢失。",
+            "如果 email_read 读取到多封邮件，必须逐封处理完所有邮件，"
+            "不得只处理第一封就结束。每处理完一封，继续处理下一封，直到全部处理完毕后再给出最终回答。"
+            "示例：email_read 返回了5封邮件 → 处理第1封 → 继续处理第2封 → ... → 全部处理完 → final_answer",
         ]
 
         if ctx.extracted_data:

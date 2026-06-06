@@ -3,49 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>荣誉时数管理系统</title>
-    <script src="https://cdn.tailwindcss.com" async></script>
+    <title>学生工作智能邮件系统</title>
+    <script src="/static/vendor/tailwind-browser.js" defer></script>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body class="bg-gray-50 min-h-screen flex">
+<body class="min-h-screen flex" style="background-color:#F7FAFF">
     <!-- 侧边栏 -->
-    <aside id="sidebar" class="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
-        <div class="p-6 border-b border-gray-100">
-            <h1 class="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <svg class="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <aside id="sidebar" class="w-64 flex flex-col shrink-0" style="background:#FFF;border-radius:24px;box-shadow:0 2px 12px rgba(0,0,0,0.04);margin:12px 0 12px 12px;height:calc(100vh - 24px);position:sticky;top:12px;overflow:hidden;">
+        <div class="pt-8 pb-6 px-6 border-b border-gray-100">
+            <h1 class="text-xl font-bold flex items-center gap-2.5" style="color:#2A2A33">
+                <svg class="w-7 h-7" style="color:#609FFF" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                荣誉时数系统
+                学生行政工作智能Agent
             </h1>
-            <p class="text-xs text-gray-400 mt-1">学生行政工作智能Agent</p>
+            <p class="text-xs mt-1.5" style="color:#787A86">荣誉时数系统</p>
         </div>
-        <nav class="flex-1 p-4 space-y-1">
-            <a href="#/" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors" data-page="dashboard">
+        <nav class="flex-1 px-4 py-4 space-y-1">
+            <a href="#/" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm font-medium" data-page="dashboard">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                 </svg>
                 仪表盘
             </a>
-            <a href="#/execute" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors" data-page="execute">
+            <a href="#/execute" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm font-medium" data-page="execute">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
                 任务执行
             </a>
-            <a href="#/history" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors" data-page="history">
+            <a href="#/history" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm font-medium" data-page="history">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
                 执行日志
             </a>
-            <a href="#/excel-records" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors" data-page="excel-records">
+            <a href="#/excel-records" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm font-medium" data-page="excel-records">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
                 数据记录
             </a>
-            <a href="#/tools" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors" data-page="tools">
+            <a href="#/tools" class="nav-link flex items-center gap-3 px-4 py-2.5 text-sm font-medium" data-page="tools">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -53,21 +53,21 @@
                 工具管理
             </a>
         </nav>
-        <div class="p-4 border-t border-gray-100">
-            <div class="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-50">
-                <div id="sidebarStatus" class="w-2 h-2 rounded-full bg-gray-300"></div>
-                <span class="text-sm text-gray-500" id="sidebarStatusText">检查中...</span>
+        <div class="px-4 pb-5 pt-4 border-t border-gray-100">
+            <div class="sidebar-status-card" style="background:#F7FAFF;border-radius:20px;">
+                <div id="sidebarStatus" class="w-2 h-2 rounded-full" style="background:#9CA3B0"></div>
+                <span class="text-sm" id="sidebarStatusText" style="color:#787A86">检查中...</span>
             </div>
         </div>
     </aside>
 
     <!-- 主内容区 -->
-    <main class="flex-1 overflow-auto">
-        <div class="max-w-7xl mx-auto p-6">
+    <main class="flex-1 overflow-auto" style="background-color:#F7FAFF">
+        <div class="max-w-7xl mx-auto" style="padding:28px 24px;">
             <!-- 页面标题 -->
-            <div class="mb-6">
-                <h2 class="text-2xl font-bold text-gray-900" id="pageTitle">仪表盘</h2>
-                <p class="text-sm text-gray-400 mt-1" id="pageSubtitle">系统概览与状态监控</p>
+            <div style="margin-bottom:24px;">
+                <h2 class="page-title" id="pageTitle">仪表盘</h2>
+                <p class="page-subtitle" id="pageSubtitle">系统概览与状态监控</p>
             </div>
 
             <!-- 页面容器 -->
@@ -76,7 +76,7 @@
             </div>
 
             <!-- 页脚 -->
-            <div class="mt-12 pt-6 border-t border-gray-100 text-center text-xs text-gray-300">
+            <div style="margin-top:48px;padding-top:24px;border-top:1px solid #F3F4F6;text-align:center;font-size:0.75rem;color:#D1D5DB;">
                 荣誉时数管理系统 v2.0 &mdash; 学生行政工作智能Agent
             </div>
         </div>
@@ -84,10 +84,10 @@
 
     <!-- 通知 Toast -->
     <div id="toast" class="fixed top-6 right-6 z-50 hidden">
-        <div class="bg-white rounded-xl shadow-lg border border-gray-100 p-4 flex items-center gap-3 min-w-[300px]">
+        <div class="toast-container p-4 flex items-center gap-3 min-w-[300px]">
             <div id="toastIcon" class="w-5 h-5"></div>
-            <p class="text-sm text-gray-700 flex-1" id="toastMessage"></p>
-            <button onclick="hideToast()" class="text-gray-300 hover:text-gray-500">
+            <p class="text-sm flex-1" id="toastMessage" style="color:#787A86"></p>
+            <button onclick="hideToast()" class="hover:opacity-70" style="color:#D1D5DB">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -95,7 +95,7 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="/static/vendor/marked.umd.js"></script>
     <script src="/static/js/app.js"></script>
     <script src="/static/js/dashboard.js"></script>
     <script src="/static/js/task-execute.js"></script>
