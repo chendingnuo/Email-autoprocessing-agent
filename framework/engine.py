@@ -76,6 +76,9 @@ class ReActEngine:
         """
         ctx = context or self.state.create_context(user_request)
         callbacks = callbacks or []
+        
+        # 初始化已处理邮件列表（用于记录本次任务处理的邮件）
+        ctx.metadata.setdefault("processed_emails", [])
 
         logger.info(f"[{ctx.task_id}] 开始执行ReAct循环, 最大步数={self.max_steps}")
 
@@ -248,6 +251,21 @@ class ReActEngine:
                 used = ctx.metadata.setdefault("used_tools", [])
                 if tool_call.tool_name not in used:
                     used.append(tool_call.tool_name)
+                
+                # 如果是 email_read 工具，从结果中提取邮件信息用于后续标记
+                if tool_call.tool_name == "email_read":
+                    try:
+                        result = json.loads(obs)
+                        if result.get("status") == "success":
+                            processed_emails = ctx.metadata.setdefault("processed_emails", [])
+                            for email in result.get("emails", []):
+                                processed_emails.append({
+                                    "id": email.get("id"),
+                                    "subject": email.get("subject"),
+                                    "task_type": email.get("task_type", "unknown")
+                                })
+                    except Exception as e:
+                        logger.debug(f"提取邮件信息失败: {e}")
                 # 自动追踪已处理的邮件ID（来自 email_read 的结果）
                 if tool_call.tool_name == "email_read" and isinstance(obs, str):
                     try:

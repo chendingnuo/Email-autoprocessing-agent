@@ -27,6 +27,13 @@ from email import message_from_bytes
 logger = logging.getLogger(__name__)
 
 
+# 邮件任务类型定义和关键词
+TASK_TYPE_KEYWORDS = {
+    "volunteer_hours": ["荣誉时数", "志愿者时长", "时长导入", "小时", "志愿者"],
+    "volunteer_project": ["立项", "项目申请", "活动申请", "场地申请", "申请"],
+}
+
+
 @dataclass
 class EmailMessage:
     """一封邮件的结构化表示"""
@@ -45,8 +52,12 @@ class EmailTools:
     """
     邮件工具集。
     提供 IMAP 读取和 SMTP 回复功能。
+    支持按任务类型过滤邮件和防重复处理。
     注意：实际使用时需要配置邮件服务器地址和凭证。
     """
+
+    # 处理历史文件路径
+    PROCESSED_EMAILS_FILE = "data/processed_emails.json"
 
     def __init__(
         self,
@@ -70,6 +81,9 @@ class EmailTools:
         )
         os.makedirs(self.attachment_dir, exist_ok=True)
 
+        # 初始化处理历史
+        self.processed_emails = self._load_processed_emails()
+
         if not all([self.imap_server, self.smtp_server, self.email_account, self.email_password]):
             logger.warning(
                 "邮件服务器配置不完整。请设置以下环境变量：\n"
@@ -77,16 +91,78 @@ class EmailTools:
                 "或在初始化 EmailTools 时传入对应参数。"
             )
 
-    def read_unread(self, limit: int = 10) -> str:
+    def _load_processed_emails(self) -> dict:
+        """加载已处理邮件的历史记录"""
+        file_path = Path(self.PROCESSED_EMAILS_FILE)
+        if file_path.exists():
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data.get("processed_emails", {})
+            except Exception as e:
+                logger.warning(f"读取处理历史失败: {e}")
+                return {}
+        return {}
+
+    def _save_processed_emails(self) -> None:
+        """保存已处理邮件的历史记录"""
+        file_path = Path(self.PROCESSED_EMAILS_FILE)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump({"processed_emails": self.processed_emails}, f,
+                         ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"保存处理历史失败: {e}")
+
+    def mark_email_processed(self, email_id: str, subject: str,
+                           task_type: str, status: str = "success") -> None:
+        """标记邮件为已处理"""
+        self.processed_emails[email_id] = {
+            "subject": subject,
+            "task_type": task_type,
+            "processed_at": datetime.now().isoformat(),
+            "status": status
+        }
+        self._save_processed_emails()
+        logger.info(f"邮件已标记为已处理: {email_id} ({task_type})")
+
+    def is_email_processed(self, email_id: str) -> bool:
+        """检查邮件是否已处理"""
+        return email_id in self.processed_emails
+
+    def get_processed_count(self, task_type: str = "") -> int:
+        """获取已处理邮件数"""
+        if not task_type:
+            return len(self.processed_emails)
+        return sum(1 for record in self.processed_emails.values()
+                  if record.get("task_type") == task_type)
+
+    def _detect_task_type(self, subject: str, body_preview: str = "") -> str:
+        """根据邮件内容检测任务类型"""
+        text = (subject + " " + body_preview).lower()
+        
+        for task_type, keywords in TASK_TYPE_KEYWORDS.items():
+            if any(kw in text for kw in keywords):
+                return task_type
+        
+        return "unknown"
+
+    def read_unread(self, limit: int = 10, batch_mode: bool = False, task_type: str = "") -> str:
         """
         读取收件箱中未处理的邮件，并保存附件到本地。
         读取后自动将邮件标记为已读，避免重复处理。
+        
+        支持按任务类型过滤，自动跳过已处理的邮件。
 
         Args:
             limit: 最大读取封数
+            batch_mode: 是否启用批处理模式（返回分类统计）
+            task_type: 任务类型过滤 ("volunteer_hours" / "volunteer_project" / "")
+                      空字符串表示不过滤，返回所有类型
 
         Returns:
-            str: 邮件列表的JSON字符串，含附件信息
+            str: 邮件列表的JSON字符串，含附件信息和任务类型
         """
         if not self.imap_server:
             return json.dumps({
@@ -128,13 +204,23 @@ class EmailTools:
                     }, ensure_ascii=False)
             else:
                 source = "unread"
-                email_ids = email_ids[-limit:]
 
             emails = []
+            categories = {}
+            unread_ids_to_mark = []
 
-            for eid in email_ids:
+            # 逆序处理，从最新开始
+            for eid in reversed(email_ids):
+                if len(emails) >= limit:
+                    break
+
                 # eid 是 bytes 类型（如 b'95'），统一转为字符串
                 eid_str = eid.decode() if isinstance(eid, bytes) else str(eid)
+
+                # 检查：是否已处理
+                if self.is_email_processed(eid_str):
+                    logger.debug(f"跳过已处理邮件: {eid_str}")
+                    continue
 
                 status, data = mail.fetch(eid, "(RFC822)")
                 if status != "OK":
@@ -155,6 +241,18 @@ class EmailTools:
 
                 # 提取正文
                 body_text = self._get_email_body(msg)
+                body_preview = body_text[:500]
+
+                # 检测任务类型
+                detected_task_type = self._detect_task_type(subject, body_preview)
+
+                # 检查：是否匹配指定的任务类型
+                if task_type and detected_task_type != task_type:
+                    logger.debug(
+                        f"跳过不匹配的邮件类型: {eid_str} "
+                        f"(期望: {task_type}, 实际: {detected_task_type})"
+                    )
+                    continue
 
                 # 提取附件（传入字符串形式的ID，避免 b'95' 出现在文件名中）
                 attachments = self._extract_attachments(msg, eid_str)
@@ -168,7 +266,8 @@ class EmailTools:
                     body_text=body_text,
                     raw_size=len(raw_email),
                 )
-                emails.append({
+                
+                email_data = {
                     "id": email_msg.id,
                     "subject": email_msg.subject,
                     "from": email_msg.sender,
@@ -177,16 +276,24 @@ class EmailTools:
                     "body_length": len(email_msg.body_text),
                     "attachments": attachments,
                     "has_attachments": len(attachments) > 0,
-                })
+                    "task_type": detected_task_type,  # 新增：任务类型
+                }
+                
+                emails.append(email_data)
+                categories[detected_task_type] = categories.get(detected_task_type, 0) + 1
+                
+                # 记录需要标记为已读的邮件
+                if source == "unread":
+                    unread_ids_to_mark.append(eid)
 
             # 将本次读取的未读邮件标记为已读，避免重复处理
-            if source == "unread" and email_ids:
-                for eid in email_ids:
+            if source == "unread" and unread_ids_to_mark:
+                for eid in unread_ids_to_mark:
                     try:
                         mail.store(eid, '+FLAGS', '\\Seen')
                     except Exception as e:
                         logger.warning(f"标记邮件已读失败 ({eid}): {e}")
-                logger.info(f"已将 {len(email_ids)} 封邮件标记为已读")
+                logger.info(f"已将 {len(unread_ids_to_mark)} 封邮件标记为已读")
 
             mail.logout()
 
@@ -196,8 +303,22 @@ class EmailTools:
                 "total": len(emails),
                 "emails": emails,
                 "source": source,
-                "message": f"成功读取 {len(emails)} 封{label}邮件"
+                "message": f"成功读取 {len(emails)} 封{label}邮件",
+                "task_type": task_type,  # 返回过滤的任务类型
+                "processed_count": self.get_processed_count(task_type),  # 已处理数量
             }
+            
+            # 批处理模式返回汇总
+            if batch_mode and categories:
+                summary = f"共{len(emails)}封："
+                summary += "、".join(
+                    f"{cat}({cnt})"
+                    for cat, cnt in sorted(categories.items(),
+                                         key=lambda x: -x[1])
+                )
+                result["summary"] = summary
+                result["categories"] = categories
+            
             return json.dumps(result, ensure_ascii=False)
 
         except imaplib.IMAP4.error as e:

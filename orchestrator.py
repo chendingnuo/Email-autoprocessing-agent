@@ -125,12 +125,36 @@ class Orchestrator:
                 user_request=ctx.user_request,
                 context=ctx,
             )
+            # 任务完成后，标记已处理的邮件
+            if ctx.status == TaskStatus.COMPLETED:
+                self._mark_processed_emails(ctx)
         except Exception as e:
             ctx.status = TaskStatus.FAILED
             ctx.error = f"{type(e).__name__}: {e}"
             import traceback
             ctx.summary = traceback.format_exc()[:500]
             self.state.save_context(ctx)
+
+    def _mark_processed_emails(self, ctx: TaskContext) -> None:
+        """根据任务上下文标记已处理的邮件"""
+        processed_emails = ctx.metadata.get("processed_emails", [])
+        
+        for email_info in processed_emails:
+            email_id = email_info.get("id")
+            subject = email_info.get("subject", "")
+            task_type = email_info.get("task_type", "unknown")
+            
+            if email_id and self.tools.get("email"):
+                try:
+                    self.tools["email"].mark_email_processed(
+                        email_id=email_id,
+                        subject=subject,
+                        task_type=task_type,
+                        status="success"
+                    )
+                    logger.info(f"已标记邮件为已处理: {email_id} ({task_type})")
+                except Exception as e:
+                    logger.error(f"标记邮件失败: {e}")
 
     def get_result(self, task_id: str) -> dict[str, Any]:
         return self._get_task_result(task_id)
@@ -264,14 +288,21 @@ class Orchestrator:
                 "优先读取未读邮件，如果没有未读邮件则自动返回最近的邮件。"
                 "返回邮件列表，包含发件人、主题、正文预览、附件信息（文件名和保存路径）。"
                 "如有附件（.docx），附件保存在 saved_path 字段中，可后续调用 doc_parse_attachment 解析。\n\n"
+                "【任务类型过滤】\n"
+                "系统会自动检测邮件属于哪种任务类型：\n"
+                "  • volunteer_hours：荣誉时数录入相关（关键词：荣誉时数、志愿者时长、时长导入等）\n"
+                "  • volunteer_project：志愿项目立项相关（关键词：立项、项目申请、活动申请等）\n"
+                "  • unknown：其他类型\n\n"
+                "可在 task_type 参数中指定任务类型，系统会自动过滤并跳过不匹配的邮件。\n"
+                "如果指定了 task_type，系统会自动跳过已经处理过的邮件，避免重复处理。\n\n"
                 "⚠️ 重要：此工具一次可返回多封邮件。当返回多封邮件时，你必须逐封处理完所有邮件，"
                 "不得只处理第一封就结束。每处理完一封继续处理下一封，全部处理完毕后再给出最终回答。\n\n"
                 f"可用邮箱: {account_list_str}\n"
-                "account 参数指定用哪个邮箱读取，不传则使用默认邮箱。"
+                "account 参数指定用哪个邮箱读取，不传则使用默认邮箱。\n"
                 "limit 参数控制最大读取封数，不传则默认10封。"
             ),
-            fn=lambda account="default", limit=10: _email_dispatch(
-                account, "read_unread", limit=limit
+            fn=lambda account="default", limit=10, task_type="": _email_dispatch(
+                account, "read_unread", limit=limit, batch_mode=False, task_type=task_type
             ),
         )
 
