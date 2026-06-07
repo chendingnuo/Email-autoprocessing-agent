@@ -331,11 +331,11 @@ class EmailTools:
 
         try:
             msg = MIMEText(content, "plain", "utf-8")
-            msg["Subject"] = subject
+            msg["Subject"] = Header(subject, "utf-8")
             msg["From"] = self.email_account
             msg["To"] = to_addr
             if cc_addr:
-                msg["Cc"] = cc_addr
+                msg["Cc"] = Header(cc_addr, "utf-8") if cc_addr else ""
 
             # SMTP连接：根据端口选择 SSL 或 STARTTLS
             if self.smtp_port == 465:

@@ -7,6 +7,7 @@ LLM客户端抽象层
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from abc import ABC, abstractmethod
@@ -14,6 +15,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -52,11 +55,18 @@ class TongyiQianwenClient(BaseLLMClient):
         timeout: int = 60,
         max_retries: int = 3,
     ):
-        self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY", "")
+        self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY", "").strip()
         if not self.api_key:
             raise ValueError(
                 "未配置API密钥。请设置环境变量 DASHSCOPE_API_KEY，"
                 "或在配置文件中指定 api_key。"
+            )
+        # 检测是否误用了示例文件中的占位文字
+        if any(ord(c) > 127 for c in self.api_key):
+            raise ValueError(
+                f"API密钥包含非ASCII字符，请检查 DASHSCOPE_API_KEY 是否正确设置。\n"
+                f"当前值: {self.api_key[:30]}...\n"
+                f"提示：请将 .env 文件中的 sk-你的阿里云API密钥 替换为从阿里云获取的真实密钥。"
             )
         self.model = model
         self.base_url = base_url.rstrip("/")
@@ -85,7 +95,7 @@ class TongyiQianwenClient(BaseLLMClient):
         """
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
         }
 
         full_messages = [{"role": "system", "content": system_prompt}]
@@ -99,6 +109,13 @@ class TongyiQianwenClient(BaseLLMClient):
             **kwargs,
         }
 
+        # 手动序列化 JSON，确保所有非 ASCII 字符被转义为 \uXXXX
+        # 避免 requests 的 json 参数在某些版本/环境下触发 latin-1 编码错误
+        try:
+            body_bytes = json.dumps(payload, ensure_ascii=True).encode("ascii")
+        except Exception as e:
+            raise RuntimeError(f"JSON serialization failed: {e}")
+
         last_error = None
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -106,7 +123,7 @@ class TongyiQianwenClient(BaseLLMClient):
                 resp = requests.post(
                     f"{self.base_url}/chat/completions",
                     headers=headers,
-                    json=payload,
+                    data=body_bytes,
                     timeout=self.timeout,
                 )
                 elapsed = (time.time() - start) * 1000
@@ -190,7 +207,7 @@ class OpenAIClient(BaseLLMClient):
     ) -> LLMResponse:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+            "Content-Type": "application/json; charset=utf-8",
         }
         full_messages = [{"role": "system", "content": system_prompt}]
         full_messages.extend(messages)
@@ -203,13 +220,19 @@ class OpenAIClient(BaseLLMClient):
             **kwargs,
         }
 
+        # 手动序列化 JSON，确保所有非 ASCII 字符被转义为 \uXXXX
+        try:
+            body_bytes = json.dumps(payload, ensure_ascii=True).encode("ascii")
+        except Exception as e:
+            raise RuntimeError(f"JSON serialization failed: {e}")
+
         for attempt in range(1, self.max_retries + 1):
             try:
                 start = time.time()
                 resp = requests.post(
                     f"{self.base_url}/chat/completions",
                     headers=headers,
-                    json=payload,
+                    data=body_bytes,
                     timeout=self.timeout,
                 )
                 elapsed = (time.time() - start) * 1000

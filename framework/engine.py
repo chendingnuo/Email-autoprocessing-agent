@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import traceback
 from typing import Any, Callable, Optional
 
 from .llm_client import BaseLLMClient, LLMResponse
@@ -242,7 +243,8 @@ class ReActEngine:
             return None
 
         except Exception as e:
-            logger.error(f"[{ctx.task_id}] LLM调用异常: {e}")
+            tb = traceback.format_exc()
+            logger.error(f"[{ctx.task_id}] LLM调用异常: {e}\n{tb}")
             self.state.block_context(ctx, f"LLM调用异常: {e}")
             return None
 
