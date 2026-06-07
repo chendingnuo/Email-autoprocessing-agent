@@ -320,6 +320,24 @@ const TaskExecute = {
 
         if (data.status === 'completed') {
             document.getElementById('summaryText').innerHTML = this.renderMarkdown(data.summary || '任务已完成。');
+            // 如果存在 LLM 原始回答，在摘要下方以可折叠方式展示
+            if (data.llm_final_answer) {
+                const summaryContainer = document.getElementById('summaryText');
+                const llmBlock = document.createElement('div');
+                llmBlock.style.marginTop = '16px';
+                llmBlock.style.paddingTop = '12px';
+                llmBlock.style.borderTop = '1px solid #E2E6EE';
+                llmBlock.innerHTML = `
+                    <details style="font-size:0.8125rem;">
+                        <summary style="color:#787A86;cursor:pointer;user-select:none;font-weight:500;">
+                            📝 查看 LLM 原始回答（仅供参考，可能包含不准确描述）
+                        </summary>
+                        <div class="markdown-body" style="margin-top:8px;padding:12px;background:#F7FAFF;border-radius:14px;font-size:0.75rem;color:#2A2A33;">
+                            ${this.renderMarkdown(data.llm_final_answer)}
+                        </div>
+                    </details>`;
+                summaryContainer.appendChild(llmBlock);
+            }
             App.showToast('任务已完成', 'success');
         } else if (data.status === 'blocked') {
             document.getElementById('blockedReason').textContent = data.error || '需要人工审核处理';
