@@ -102,6 +102,31 @@ class ReActEngine:
             if step.type == StepType.TOOL_CALL and step.tool_call:
                 self._execute_tool_step(ctx, step)
             elif step.type == StepType.FINAL_ANSWER:
+                # 检查是否还有未处理的邮件（email_read 返回了多封但未全部处理）
+                read_ids = ctx.metadata.get("read_email_ids", [])
+                completed_ids = ctx.metadata.get("completed_email_ids", [])
+                if read_ids and len(completed_ids) < len(read_ids):
+                    unprocessed = sorted(set(str(e) for e in read_ids) - set(str(e) for e in completed_ids))
+                    correction = (
+                        f"【提醒】email_read 返回了 {len(read_ids)} 封邮件"
+                        f"（ID: {', '.join(str(e) for e in read_ids)}），"
+                        f"但你目前只处理了 {len(completed_ids)} 封"
+                        f"（已完成: {', '.join(str(e) for e in completed_ids) or '无'}），"
+                        f"还有 {len(unprocessed)} 封未处理"
+                        f"（未处理: {', '.join(unprocessed)}）。\n\n"
+                        f"请继续处理剩余邮件！每封邮件都需要完成："
+                        f"提取信息 → 检查重复 → 登记数据 → 回复草稿。"
+                        f"全部处理完毕后，再给出最终回答。"
+                    )
+                    ctx.conversation_history.append(
+                        ConversationTurn(
+                            turn_index=len(ctx.conversation_history),
+                            prompt="",
+                            response=f"<observation>\n{correction}\n</observation>",
+                        )
+                    )
+                    continue
+
                 # 检测最终答案中是否包含需要人工介入的标记
                 fa = step.final_answer[:2000]
                 blocked_keywords = ["需要人工介入", "无法完成", "未能完成",
@@ -248,16 +273,28 @@ class ReActEngine:
                 used = ctx.metadata.setdefault("used_tools", [])
                 if tool_call.tool_name not in used:
                     used.append(tool_call.tool_name)
-                # 自动追踪已处理的邮件ID（来自 email_read 的结果）
+                # 自动追踪已读取的邮件ID（来自 email_read 的结果）
                 if tool_call.tool_name == "email_read" and isinstance(obs, str):
                     try:
                         email_result = json.loads(obs)
                         if email_result.get("status") == "success":
-                            ids = ctx.metadata.setdefault("processed_email_ids", [])
+                            ids = ctx.metadata.setdefault("read_email_ids", [])
                             for em in email_result.get("emails", []):
                                 eid = str(em.get("id", ""))
                                 if eid and eid not in ids:
                                     ids.append(eid)
+                    except (json.JSONDecodeError, Exception):
+                        pass
+                # 自动追踪已处理的邮件ID（来自 email_reply_draft 的结果）
+                if tool_call.tool_name == "email_reply_draft" and isinstance(obs, str):
+                    try:
+                        draft_result = json.loads(obs)
+                        if draft_result.get("status") == "success":
+                            mid = tool_call.parameters.get("mail_id", "")
+                            if mid:
+                                completed = ctx.metadata.setdefault("completed_email_ids", [])
+                                if mid not in completed:
+                                    completed.append(mid)
                     except (json.JSONDecodeError, Exception):
                         pass
                 # 同步 data_store 到上下文，使提取的数据在滑动窗口压缩后仍可恢复

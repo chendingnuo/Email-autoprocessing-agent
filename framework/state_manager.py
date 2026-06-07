@@ -90,10 +90,17 @@ class StateManager:
         # 已完成的步骤概览
         if ctx.current_step_count > 0:
             parts.append(f"已完成 {ctx.current_step_count} 步执行")
+        # 已读取的邮件
+        read_ids = ctx.metadata.get("read_email_ids", [])
+        if read_ids:
+            parts.append(f"已读取邮件: {', '.join(str(e) for e in read_ids)}")
         # 已处理的邮件
-        processed_ids = ctx.metadata.get("processed_email_ids", [])
-        if processed_ids:
-            parts.append(f"已处理邮件: {', '.join(str(e) for e in processed_ids)}")
+        completed_ids = ctx.metadata.get("completed_email_ids", [])
+        if completed_ids:
+            parts.append(f"已处理邮件: {', '.join(str(e) for e in completed_ids)}")
+        if read_ids and completed_ids and len(completed_ids) < len(read_ids):
+            remaining = len(read_ids) - len(completed_ids)
+            parts.append(f"剩余{remaining}封待处理")
         # 已执行过的工具列表（去重）
         used_tools = ctx.metadata.get("used_tools", [])
         if used_tools:
