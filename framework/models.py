@@ -88,6 +88,7 @@ class TaskContext:
     conversation_history: list[ConversationTurn] = field(default_factory=list)
     extracted_data: dict[str, Any] = field(default_factory=dict)
     summary: str = ""
+    llm_final_answer: str = ""
     max_steps: int = 15
     current_step_count: int = 0
     consecutive_identical_calls: int = 0

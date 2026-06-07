@@ -452,8 +452,10 @@ class Orchestrator:
             "status": ctx.status.value,
             "steps": ctx.current_step_count,
             "summary": ctx.summary or "",
+            "llm_final_answer": ctx.llm_final_answer,
             "error": ctx.error,
             "extracted_data": ctx.extracted_data,
+            "extracted_records": ctx.metadata.get("extracted_records", []),
             "step_details": step_details,
         }
 

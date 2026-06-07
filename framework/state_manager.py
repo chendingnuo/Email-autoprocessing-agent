@@ -84,8 +84,11 @@ class StateManager:
         用于滑动窗口策略：保留关键业务数据，丢弃冗余执行细节。
         """
         parts = []
-        # 关键业务数据（通过 data_store 保存的）
-        if ctx.extracted_data:
+        # 所有提取记录（多邮件场景下保留每封邮件的提取结果）
+        records = ctx.metadata.get("extracted_records", [])
+        if records:
+            parts.append(f"全部提取记录 ({len(records)}条): {json.dumps(records, ensure_ascii=False)}")
+        elif ctx.extracted_data:
             parts.append(f"已提取数据: {json.dumps(ctx.extracted_data, ensure_ascii=False)}")
         # 已完成的步骤概览
         if ctx.current_step_count > 0:
@@ -140,7 +143,9 @@ class StateManager:
                 "status": ctx.status.value,
                 "current_step_count": ctx.current_step_count,
                 "summary": ctx.summary,
+                "llm_final_answer": ctx.llm_final_answer,
                 "extracted_data": ctx.extracted_data,
+                "extracted_records": ctx.metadata.get("extracted_records", []),
                 "error": ctx.error,
                 "created_at": ctx.created_at.isoformat(),
                 "completed_at": ctx.completed_at.isoformat() if ctx.completed_at else None,
@@ -166,11 +171,16 @@ class StateManager:
                 status=TaskStatus(data["status"]),
                 current_step_count=data["current_step_count"],
                 summary=data.get("summary", ""),
+                llm_final_answer=data.get("llm_final_answer", ""),
                 extracted_data=data.get("extracted_data", {}),
                 error=data.get("error"),
                 created_at=datetime.fromisoformat(data["created_at"]),
                 completed_at=datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None,
             )
+            # 恢复 extracted_records 到 metadata（跨会话恢复）
+            records = data.get("extracted_records", [])
+            if records:
+                ctx.metadata["extracted_records"] = records
             self._contexts[task_id] = ctx
             return ctx
         except Exception as e:

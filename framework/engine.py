@@ -130,6 +130,7 @@ class ReActEngine:
 
                 # 检测最终答案中是否包含需要人工介入的标记
                 fa = step.final_answer[:2000]
+                ctx.llm_final_answer = step.final_answer  # 保留 LLM 原始回答
                 blocked_keywords = ["需要人工介入", "无法完成", "未能完成",
                                     "请人工处理", "请手动处理", "操作失败", "写入失败"]
                 needs_intervention = any(kw in fa for kw in blocked_keywords)
@@ -142,7 +143,9 @@ class ReActEngine:
                         f"[{ctx.task_id}] 任务需人工介入: {fa[:100]}..."
                     )
                 else:
-                    self.state.complete_context(ctx, summary=fa)
+                    # 用基于实际执行数据的事实摘要替代 LLM 编造的 final_answer
+                    factual_summary = self._generate_execution_summary(ctx)
+                    self.state.complete_context(ctx, summary=factual_summary)
                     logger.info(
                         f"[{ctx.task_id}] 任务完成: {fa[:100]}..."
                     )
@@ -303,6 +306,9 @@ class ReActEngine:
                 if self._data_store:
                     ctx.extracted_data.update(self._data_store)
                     ctx.metadata.setdefault("extracted_fields", {}).update(self._data_store)
+                    # 追加记录到 extracted_records（保留所有邮件的提取结果，避免同名键覆盖）
+                    records = ctx.metadata.setdefault("extracted_records", [])
+                    records.append(dict(self._data_store))
                     self._data_store.clear()
             elif executed.status == ToolCallStatus.BLOCKED:
                 obs = f"工具调用被安全策略拦截: {executed.error_message}"
@@ -389,6 +395,46 @@ class ReActEngine:
                 response=f"<observation>\n{correction}\n</observation>",
             )
         )
+
+    # ── 事实摘要 ──────────────────────────────────────
+
+    def _generate_execution_summary(self, ctx: TaskContext) -> str:
+        """
+        基于实际工具执行数据生成任务摘要，而非依赖 LLM 的 final_answer。
+        防止 LLM 在总结时编造未实际执行的操作。
+        """
+        parts = ["## 任务执行报告（基于实际执行数据）\n"]
+
+        # 1) 提取的记录
+        records = ctx.metadata.get("extracted_records", [])
+        if records:
+            parts.append(f"### 数据登记（共 {len(records)} 条）")
+            for i, r in enumerate(records, 1):
+                fields = " | ".join(f"{k}: {v}" for k, v in r.items())
+                parts.append(f"{i}. {fields}")
+            parts.append("")
+
+        # 2) 回复草稿
+        completed_ids = ctx.metadata.get("completed_email_ids", [])
+        if completed_ids:
+            ids_str = ", ".join(completed_ids)
+            parts.append("### 回复草稿")
+            parts.append(f"已为 {len(completed_ids)} 封邮件生成回复草稿（邮件ID: {ids_str}）")
+            parts.append("")
+
+        # 3) 已读取邮件概况
+        read_ids = ctx.metadata.get("read_email_ids", [])
+        if read_ids:
+            parts.append(f"共读取 {len(read_ids)} 封邮件，已处理 {len(completed_ids)} 封")
+
+        # 4) 执行操作概况
+        used_tools = ctx.metadata.get("used_tools", [])
+        if used_tools:
+            parts.append(f"总步数: {ctx.current_step_count}")
+            parts.append(f"涉及工具: {', '.join(used_tools)}")
+
+        parts.append("\n---\n*LLM 原始回答见下方*")
+        return "\n".join(parts)
 
     # ── 任务恢复 ───────────────────────────────────────
 
