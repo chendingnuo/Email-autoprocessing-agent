@@ -43,30 +43,6 @@ PROVIDER_PRESETS: dict[str, dict] = {
         "smtp_server": "smtp.qq.com",
         "smtp_port": 465,
     },
-    "outlook": {
-        "imap_server": "outlook.office365.com",
-        "imap_port": 993,
-        "smtp_server": "smtp.office365.com",
-        "smtp_port": 587,
-    },
-    "zju": {
-        "imap_server": "mail.zju.edu.cn",
-        "imap_port": 993,
-        "smtp_server": "mail.zju.edu.cn",
-        "smtp_port": 587,
-    },
-    "126": {
-        "imap_server": "imap.126.com",
-        "imap_port": 993,
-        "smtp_server": "smtp.126.com",
-        "smtp_port": 465,
-    },
-    "163": {
-        "imap_server": "imap.163.com",
-        "imap_port": 993,
-        "smtp_server": "smtp.163.com",
-        "smtp_port": 465,
-    },
 }
 
 

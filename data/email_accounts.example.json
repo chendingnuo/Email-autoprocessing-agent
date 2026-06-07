@@ -1,7 +1,7 @@
 {
   "_说明": "邮箱账号配置模板 — 复制此文件为 email_accounts.json 并填入真实信息",
   "_注意": "此文件不含敏感信息，可安全提交到 GitHub。",
-  "_支持的服务商": "gmail, qq, outlook, zju, 126, 163, custom（自定义需手动填写 IMAP/SMTP）",
+  "_支持的服务商": "gmail, qq, custom（自定义需手动填写 IMAP/SMTP）",
   "accounts": [
     {
       "name": "default",
@@ -14,18 +14,6 @@
       "provider": "qq",
       "email": "your-qq-number@qq.com",
       "password": "你的QQ邮箱授权码"
-    },
-    {
-      "name": "outlook",
-      "provider": "outlook",
-      "email": "your-name@outlook.com",
-      "password": "你的Outlook密码"
-    },
-    {
-      "name": "zju",
-      "provider": "zju",
-      "email": "your-id@zju.edu.cn",
-      "password": "你的浙大邮箱密码"
     }
   ]
 }

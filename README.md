@@ -1,7 +1,7 @@
 # 学生行政工作智能 Agent 系统
 
-基于 **ReAct（思考-行动-观察）范式** 的高校学生组织行政邮件自动化处理系统。  
-自动读取学生发来的行政申请邮件，解析 Word 附件，提取关键信息录入 Excel 登记表，并生成回复草稿供人工审核发送。
+这是我们的人工智能基础课大作业项目，我们实现的是基于 **ReAct（思考-行动-观察）范式** 的高校学生组织行政邮件自动化处理智能体。  
+其主要功能包括哟自动读取学生发来的行政申请邮件，解析 Word 附件，提取关键信息录入 Excel 登记表，并生成回复草稿供人工审核发送。
 
 ---
 
@@ -9,11 +9,11 @@
 
 | 功能 | 说明 |
 |------|------|
-| **多邮箱支持** | 同时管理 Gmail、QQ、Outlook、浙大邮箱等多个账号，Agent 自动选择 |
+| **多邮箱支持** | 同时管理 Gmail、QQ等多个账号，Agent 自动选择或手动选择 |
 | **邮件自动读取** | 连接 IMAP 读取未读邮件，自动缓存并解析 Word 附件 |
 | **Word 文档解析** | 解析 `.docx` 附件中的段落、表格和表单字段，提取结构化数据 |
 | **Excel 登记管理** | 将提取的信息写入荣誉活动立项汇总表，支持去重检查与条件查询 |
-| **Word 模板渲染** | 根据变量动态生成 Word 公文回复 |
+| **Word 模板渲染** | 根据变量动态生成 Word 公文回复（暂未启用） |
 | **回复草稿生成** | 根据处理结果生成确认回复，保存至邮箱草稿箱，人工审核后发送 |
 | **ReAct 智能决策** | 基于 LLM 的自主推理循环，自动判断处理流程和工具调用 |
 | **多邮件批量处理** | 一次读取多封邮件并逐封自动处理，引擎层确保所有邮件处理完毕后才结束，避免遗漏 |
@@ -67,7 +67,7 @@
 
 **工作流程：**
 
-1. **读取邮件** — Agent 连接指定邮箱的 IMAP，读取未读邮件及其附件
+1. **读取邮件** — Agent 连接指定邮箱的 IMAP，读取收件箱中的未读邮件及其附件
 2. **解析附件** — 解析 `.docx` 附件中的段落和表格，提取结构化信息
 3. **提取数据** — 从邮件正文和附件中提取活动名称、主办单位、负责人等关键信息
 4. **去重检查** — 在 Excel 登记表中检查是否已有重复记录
@@ -83,10 +83,11 @@
 ### 前置要求
 
 - Python 3.10+
-- 一个或多个支持 IMAP 的邮箱（Gmail / QQ / Outlook / 163 / 126 等）
+- 一个或多个支持 IMAP 的邮箱（Gmail / QQ  等）
 - LLM API 密钥（DeepSeek 或 通义千问）
 
 ### 安装
+在目标文件夹打开终端或者powershell,复制仓库的地址
 
 ```bash
 # 1. 克隆项目
@@ -96,9 +97,6 @@ cd Email-autoprocessing-agent
 # 2. 安装依赖
 pip install -r requirements.txt
 
-# 3. 配置邮箱账号
-cp data/email_accounts.example.json data/email_accounts.json
-# 编辑 data/email_accounts.json 填入你的邮箱凭据
 ```
 
 ### 邮箱配置
@@ -130,15 +128,31 @@ cp data/email_accounts.example.json data/email_accounts.json
 |--------|---------|------|------|
 | Gmail | `gmail` | imap.gmail.com:993 | smtp.gmail.com:587 |
 | QQ邮箱 | `qq` | imap.qq.com:993 | smtp.qq.com:465 |
-| Outlook | `outlook` | outlook.office365.com:993 | smtp.office365.com:587 |
-| 浙大邮箱 | `zju` | mail.zju.edu.cn:993 | mail.zju.edu.cn:587 |
-| 126邮箱 | `126` | imap.126.com:993 | smtp.126.com:465 |
-| 163邮箱 | `163` | imap.163.com:993 | smtp.163.com:465 |
-| 自定义 | `custom` | 手动填写 IMAP/SMTP |
+| 自定义 | `custom` | 手动填写 IMAP|手动填写SMTP |
+
+#### QQ邮箱配置具体操作说明
+- 登录QQ邮箱
+- 点击右上角的设置
+- 在左侧菜单栏中选择**账号与安全**
+- 在账号与安全页面左侧菜单栏选择**安全设置**
+- 安全设置界面滑倒底，找到**POP3/IMAP/SMTP/Exchange/CardDAV 服务**
+- 开启该服务并生成**授权码**
+- 用授权码替换到**data/email_accounts.example.json**文件中的password
+- 在文件中填入自己的QQ邮箱号
+
+#### Gmail邮箱配置具体操作说明
+- 登录Gmail邮箱
+- 点击右上角自己的头像
+- 选择manage your google account
+- 先开启**登录双重认证**（按照类似以下步骤进行搜索并完成设置）
+- 在中间的搜索框搜索**应用专属密码**（中文界面）或**app password**（英文界面）
+- 点击同名的搜索结果，按照提示完成设置生成授权码
+- 用授权码替换到**data/email_accounts.example.json**文件中的password
+- 在文件中填入自己的Gmail邮箱号
 
 ### LLM 配置
 
-系统同时支持通过 `config.json`（优先级高）和 `.env` 文件配置。创建 `.env` 文件：
+系统同时支持通过 `config.json`（优先级高）和 `.env` 文件配置。编辑 `.example.env` 文件：
 
 ```ini
 # LLM 配置（二选一）
@@ -154,6 +168,7 @@ LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 # LLM_MODEL=deepseek-v4-flash
 # LLM_BASE_URL=https://api.deepseek.com/v1
 ```
+在测试这个项目时我是用的是deepseek的API，需要的操作就是用自己的deepseekAPI密钥替换示例中内容并将文件另存为.env
 
 也可编辑 `config.json`（会覆盖 `.env` 中的同名配置）：
 
@@ -175,6 +190,8 @@ LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
 
 ### 运行
+
+在本文件夹的终端或powershell运行
 
 ```bash
 python main.py
@@ -281,7 +298,7 @@ curl http://127.0.0.1:8000/api/tasks/task_xxxxxxxxxxxx
 ├── config.json                    # LLM 和引擎配置（覆盖 .env）
 ├── demo_workflow.py               # 离线演示脚本（无需 API）
 ├── requirements.txt               # Python 依赖
-├── .env                           # 环境变量（不含仓库）
+├── .example.env                   # 环境变量（不含仓库）
 ├── .gitignore                     # Git 忽略规则
 │
 ├── framework/                     # ReAct 框架核心
@@ -317,7 +334,6 @@ curl http://127.0.0.1:8000/api/tasks/task_xxxxxxxxxxxx
 │   └── test_tool_registry.py      # 工具注册中心测试（9 个用例）
 │
 ├── data/                          # 运行时数据（不含仓库）
-│   ├── email_accounts.json        # 邮箱账号配置（含密码，已 gitignore）
 │   ├── email_accounts.example.json# 邮箱配置模板（可安全提交）
 │   ├── 荣誉活动立项汇总表.xlsx     # 立项登记 Excel
 │   ├── 志愿者荣誉时数-志愿者编号导入模板.xlsx  # 志愿者时长登记模板

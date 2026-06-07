@@ -222,7 +222,7 @@ class EmailTools:
         将回复邮件保存到草稿箱，供人工审核后发送。
         自动根据邮箱服务商选择正确的草稿箱文件夹：
           - Gmail → [Gmail]/Drafts
-          - 其他（QQ/126/163/ZJU等）→ Drafts
+          - 其他（QQ/自定义等）→ Drafts
 
         Args:
             mail_id: 原邮件ID
