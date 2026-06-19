@@ -95,9 +95,11 @@ class DocTools:
         """
         读取并解析Word附件(.docx)，提取其中的文本内容和表单字段。
 
-        支持两种结构：
-        1. 段落式文档（如担保书）：提取所有段落文本
-        2. 表格式文档（如立项申请书）：提取表格中的字段标签和值
+        支持两种文档结构，自动识别并选择合适的解析策略：
+        1. 表格式文档（如立项申请书）：合并单元格场景下，只提取前两列的
+           字段标签-值对，自动跳过声明/免责行和完全重复行。
+        2. 段落式文档（如担保书）：当无表格或表格为空时，从段落文本中
+           用正则提取 "标签：值" 和 "姓名 编号 时数" 模式的结构化字段。
 
         Args:
             file_path: Word文档的绝对路径（邮件附件保存后的路径）
@@ -118,17 +120,13 @@ class DocTools:
             doc = Document(str(full_path))
 
             # 1. 提取所有段落（过滤空段落）
-            paragraphs = []
-            for p in doc.paragraphs:
-                text = p.text.strip()
-                if text:
-                    paragraphs.append(text)
+            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
             # 2. 提取所有表格数据
             tables = []
             for ti, table in enumerate(doc.tables):
                 rows = []
-                for ri, row in enumerate(table.rows):
+                for row in table.rows:
                     cells = [cell.text.strip() for cell in row.cells]
                     rows.append(cells)
                 tables.append({
@@ -138,16 +136,14 @@ class DocTools:
                     "rows": rows,
                 })
 
-            # 3. 尝试识别字段名-值对（从表格中）
+            # 3. 提取结构化字段
             fields = {}
-            for table in tables:
-                for row in table["rows"]:
-                    if len(row) >= 2:
-                        key = row[0]
-                        val = row[1]
-                        # 过滤：跳过表头、申明段落、过长的值
-                        if key and not key.startswith("行") and len(key) < 50:
-                            fields[key] = val
+            if tables:
+                # 表格式文档（立项申请书）：只取前两列的字段-值对
+                fields = self._parse_table_doc(tables)
+            elif paragraphs:
+                # 段落式文档（担保书）：从段落文本中提取字段
+                fields = self._parse_paragraph_doc(paragraphs)
 
             result = {
                 "status": "success",
@@ -170,6 +166,97 @@ class DocTools:
                 "status": "error",
                 "message": f"解析Word文档失败: {e}"
             }, ensure_ascii=False)
+
+    @staticmethod
+    def _parse_table_doc(tables: list[dict]) -> dict[str, str]:
+        """
+        解析表格式文档（立项申请书）。
+
+        合并单元格导致多列内容重复，只需取每行的 key（col[0]）和
+        value（col[1]），跳过声明/免责行、空行和重复键。
+        """
+        fields = {}
+        seen_keys = set()
+
+        # 声明/免责段落的特征词
+        skip_keywords = (
+            "申明", "承诺", "声明", "负责", "承担", "记录",
+            "提交", "拒绝", "责任", "影响", "平台",
+        )
+
+        for table in tables:
+            for row in table["rows"]:
+                if len(row) < 2:
+                    continue
+                key = row[0]
+                val = row[1]
+
+                # 跳过空键、长文本声明行、标题行
+                if not key or len(key) > 50:
+                    continue
+                if any(kw in key for kw in skip_keywords):
+                    continue
+
+                # 跳过重复键（合并单元格导致的冗余）
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+
+                # 跳过值和键完全相同（合并单元格噪声）
+                if val and val != key:
+                    fields[key] = val
+
+        return fields
+
+    @staticmethod
+    def _parse_paragraph_doc(paragraphs: list[str]) -> dict[str, str]:
+        """
+        解析段落式文档（院系担保书）。
+
+        从段落文本中提取两类结构化数据：
+        1. "标签：值" 模式（如 "组织名称：ZJU大凉山助学志愿小组"）
+        2. "姓名  志愿者编号  时数" 模式（空格分隔的三元组）
+        """
+        fields = {}
+
+        for p in paragraphs:
+            # 模式 1：标签：值
+            if "：" in p:
+                parts = p.split("：", 1)
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    val = parts[1].strip()
+                    if key and val and len(key) < 30:
+                        fields[key] = val
+                continue
+
+            # 模式 2：姓名 编号 时数（空格分隔）
+            # 例: "陈思成  330102001013765057  15h"
+            # 编号特征：18位数字
+            vid_match = re.search(
+                r"(\S{1,6})\s+(\d{18})\s+(\d+\.?\d*\s*h?)", p
+            )
+            if vid_match:
+                name = vid_match.group(1)
+                vid = vid_match.group(2)
+                hours_raw = vid_match.group(3).replace("h", "").replace("H", "").strip()
+                try:
+                    hours = str(float(hours_raw))
+                    # 去掉末尾无意义的 .0
+                    if hours.endswith(".0"):
+                        hours = hours[:-2]
+                except ValueError:
+                    hours = hours_raw
+                fields["姓名"] = name
+                fields["志愿者编号"] = vid
+                fields["荣誉时数"] = hours
+
+            # 模式 3：补录原因行
+            reason_match = re.search(r"补录原因[：:]\s*(.+)", p)
+            if reason_match:
+                fields["补录原因"] = reason_match.group(1).strip()
+
+        return fields
 
     def list_templates(self, pattern: str = "*.docx") -> str:
         """

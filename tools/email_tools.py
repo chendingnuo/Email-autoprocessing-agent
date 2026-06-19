@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 import email
+import hashlib
 import imaplib
 import json
 import logging
 import os
 import smtplib
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -407,19 +407,20 @@ class EmailTools:
         """
         提取邮件附件并保存到本地。
 
+        使用内容哈希作为文件名，实现跨邮件、跨任务的附件去重：
+        - 同一附件多次下载 → 只存一份
+        - 下次任务运行时，已缓存的附件直接跳过，不浪费磁盘和 IMAP 带宽
+
         Args:
             msg: email.message.Message 对象
-            email_id: 邮件ID字符串（用于命名，已确保不是 bytes 类型）
+            email_id: 邮件ID字符串
 
         Returns:
-            list[dict]: 附件信息列表，包含 name, saved_path, size_kb, content_type
+            list[dict]: 附件信息列表，包含 name, saved_path, size_kb, content_type, cached
         """
         attachments = []
         if not msg.is_multipart():
             return attachments
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_id = str(email_id).replace("/", "_").replace("\\", "_")
 
         for part in msg.walk():
             if part.get_content_maintype() == "multipart":
@@ -427,13 +428,14 @@ class EmailTools:
             if part.get("Content-Disposition") is None:
                 continue
 
-            filename = part.get_filename()
-            if not filename:
+            raw_filename = part.get_filename()
+            if not raw_filename:
                 continue
 
             # 解码附件文件名
+            filename = raw_filename
             try:
-                decoded_filename = decode_header(filename)
+                decoded_filename = decode_header(raw_filename)
                 filename = "".join(
                     part.decode(charset or "utf-8") if isinstance(part, bytes) else part
                     for part, charset in decoded_filename
@@ -441,23 +443,33 @@ class EmailTools:
             except Exception:
                 pass
 
-            # 生成唯一文件名避免冲突
             ext = os.path.splitext(filename)[1] or ""
-            safe_filename = f"{safe_id}_{uuid.uuid4().hex[:8]}{ext}"
-            filepath = os.path.join(self.attachment_dir, safe_filename)
 
             try:
                 payload = part.get_payload(decode=True)
-                if payload:
+                if not payload:
+                    continue
+
+                # 用内容 SHA256 前 16 位 + 原扩展名命名，实现内容级去重
+                file_hash = hashlib.sha256(payload).hexdigest()[:16]
+                safe_filename = f"{file_hash}{ext}"
+                filepath = os.path.join(self.attachment_dir, safe_filename)
+
+                cached = os.path.exists(filepath)
+                if cached:
+                    logger.info(f"附件已缓存，跳过: {filename} (hash={file_hash})")
+                else:
                     with open(filepath, "wb") as f:
                         f.write(payload)
-                    attachments.append({
-                        "filename": filename,
-                        "saved_path": filepath,
-                        "size_kb": round(len(payload) / 1024, 1),
-                        "content_type": part.get_content_type(),
-                    })
                     logger.info(f"附件已保存: {filename} -> {filepath}")
+
+                attachments.append({
+                    "filename": filename,
+                    "saved_path": filepath,
+                    "size_kb": round(len(payload) / 1024, 1),
+                    "content_type": part.get_content_type(),
+                    "cached": cached,
+                })
             except Exception as e:
                 logger.warning(f"保存附件 {filename} 失败: {e}")
 
