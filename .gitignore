@@ -18,6 +18,8 @@ build/
 data/tasks/
 # 邮件附件下载缓存
 data/attachments/
+# 对话日志文件（含完整 prompt/response）
+data/logs/
 # Excel 运行时变更（避免 Git 追踪表格数据变动）
 data/*.xlsx
 
@@ -34,3 +36,7 @@ static/package-lock.json
 *~
 .DS_Store
 Thumbs.db
+
+# ── 开发工具缓存 ─────────────────────────────────────
+.playwright-mcp/
+dashboard-screenshot.png

@@ -13,6 +13,7 @@ import traceback
 from typing import Any, Callable, Optional
 
 from .llm_client import BaseLLMClient, LLMResponse
+from .logger import ConversationLogger
 from .models import (
     ConversationTurn,
     ReActStep,
@@ -45,6 +46,7 @@ class ReActEngine:
         max_steps: int = 15,
         deadlock_threshold: int = 3,
         system_prompt_generator: Optional[Callable] = None,
+        log_dir: str = "data/logs",
     ):
         self.llm = llm_client
         self.tools = tool_registry or ToolRegistry(security_manager)
@@ -53,6 +55,7 @@ class ReActEngine:
         self.max_steps = max_steps
         self.deadlock_threshold = deadlock_threshold
         self.system_prompt_generator = system_prompt_generator
+        self.log_dir = log_dir
         # 数据存储：Agent 可以用 data_store 工具持久化提取的业务数据
         self._data_store: dict[str, Any] = {}
 
@@ -82,6 +85,10 @@ class ReActEngine:
         if context is None:
             self._data_store.clear()
 
+        # 初始化对话日志记录器
+        conv_log = ConversationLogger(log_dir=self.log_dir)
+        conv_log.start_task(ctx.task_id, user_request, created_at=ctx.created_at)
+
         logger.info(f"[{ctx.task_id}] 开始执行ReAct循环, 最大步数={self.max_steps}")
 
         while ctx.current_step_count < self.max_steps:
@@ -96,6 +103,19 @@ class ReActEngine:
 
             ctx.add_step(step)
 
+            # 记录本轮对话
+            last_turn = ctx.conversation_history[-1] if ctx.conversation_history else None
+            if last_turn and last_turn.response:
+                conv_log.log_turn(
+                    task_id=ctx.task_id,
+                    turn_index=last_turn.turn_index,
+                    system_prompt=last_turn.system_prompt,
+                    messages=last_turn.full_messages,
+                    llm_response=last_turn.response,
+                    token_count=last_turn.token_count,
+                    latency_ms=last_turn.latency_ms,
+                )
+
             # 触发回调
             for cb in callbacks:
                 try:
@@ -106,7 +126,26 @@ class ReActEngine:
             # 第二步：如果是工具调用，执行工具
             if step.type == StepType.TOOL_CALL and step.tool_call:
                 self._execute_tool_step(ctx, step)
+                # 记录工具调用
+                tc = step.tool_call
+                conv_log.log_tool_call(
+                    task_id=ctx.task_id,
+                    turn_index=len(ctx.conversation_history) - 1,
+                    tool_name=tc.tool_name,
+                    parameters=tc.parameters,
+                    result=tc.result,
+                    status=tc.status.value if tc.status else "unknown",
+                    duration_ms=tc.duration_ms,
+                    error=tc.error_message,
+                )
             elif step.type == StepType.FINAL_ANSWER:
+                # 记录最终回答
+                conv_log.log_final_answer(
+                    ctx.task_id,
+                    len(ctx.conversation_history) - 1,
+                    step.final_answer,
+                )
+
                 # 检查是否还有未处理的邮件（email_read 返回了多封但未全部处理）
                 read_ids = ctx.metadata.get("read_email_ids", [])
                 completed_ids = ctx.metadata.get("completed_email_ids", [])
@@ -143,6 +182,7 @@ class ReActEngine:
                             f"提取信息 → 检查重复 → 登记数据 → 回复草稿。"
                             f"全部处理完毕后，再给出最终回答。"
                         )
+                        conv_log.log_reminder(ctx.task_id, correction)
                         ctx.conversation_history.append(
                             ConversationTurn(
                                 turn_index=len(ctx.conversation_history),
@@ -166,6 +206,10 @@ class ReActEngine:
                     logger.warning(
                         f"[{ctx.task_id}] 任务需人工介入: {fa[:100]}..."
                     )
+                    conv_log.complete_task(
+                        ctx.task_id, "blocked", ctx.current_step_count,
+                        summary=ctx.summary, error=ctx.error or "",
+                    )
                 else:
                     # 用基于实际执行数据的事实摘要替代 LLM 编造的 final_answer
                     factual_summary = self._generate_execution_summary(ctx)
@@ -173,16 +217,27 @@ class ReActEngine:
                     logger.info(
                         f"[{ctx.task_id}] 任务完成: {fa[:100]}..."
                     )
+                    conv_log.complete_task(
+                        ctx.task_id, "completed", ctx.current_step_count,
+                        summary=fa,
+                    )
                 return ctx
 
             # 滑动窗口压缩
             self.state.apply_sliding_window(ctx)
 
-        # 超出最大步数
-        if ctx.current_step_count >= self.max_steps:
-            self.state.block_context(
-                ctx, f"超出最大执行步数限制 ({self.max_steps})"
-            )
+        # 任务未正常结束（异常中断 / 超出最大步数）
+        if ctx.status not in (TaskStatus.COMPLETED,):
+            if ctx.status == TaskStatus.BLOCKED:
+                conv_log.complete_task(
+                    ctx.task_id, "blocked", ctx.current_step_count,
+                    summary=ctx.summary, error=ctx.error or "",
+                )
+            else:
+                conv_log.complete_task(
+                    ctx.task_id, "failed", ctx.current_step_count,
+                    summary=ctx.summary, error=ctx.error or "任务异常中断",
+                )
 
         return ctx
 
@@ -245,6 +300,8 @@ class ReActEngine:
         turn = ConversationTurn(
             turn_index=len(ctx.conversation_history),
             prompt=json.dumps(messages, ensure_ascii=False)[:200],
+            system_prompt=system_prompt,
+            full_messages=messages,
         )
 
         try:
@@ -252,6 +309,8 @@ class ReActEngine:
             response: LLMResponse = self.llm.chat(messages, system_prompt)
             turn.response = response.content
             turn.token_count = response.token_count
+            turn.model = response.model
+            turn.latency_ms = response.latency_ms
 
             logger.info(
                 f"[{ctx.task_id}] 第{turn.turn_index}轮LLM调用 "

@@ -223,12 +223,14 @@ class Orchestrator:
         }
 
     def _init_engine(self):
+        log_dir = os.path.join(self.config.data_dir, "logs")
         return ReActEngine(
             llm_client=self.llm,
             security_manager=self.security,
             state_manager=self.state,
             max_steps=self.config.engine.max_steps,
             deadlock_threshold=self.config.engine.deadlock_threshold,
+            log_dir=log_dir,
         )
 
     def _register_tools(self):

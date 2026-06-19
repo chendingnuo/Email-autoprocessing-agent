@@ -74,6 +74,11 @@ class ConversationTurn:
     parsed_steps: list[ReActStep] = field(default_factory=list)
     timestamp: datetime = field(default_factory=datetime.now)
     token_count: int = 0
+    # 对话日志用：完整的 system_prompt 和 messages（不会被滑动窗口压缩）
+    system_prompt: str = ""
+    full_messages: list[dict] = field(default_factory=list)
+    model: str = ""
+    latency_ms: float = 0.0
 
 
 @dataclass
