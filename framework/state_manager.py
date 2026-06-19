@@ -149,6 +149,10 @@ class StateManager:
                 "error": ctx.error,
                 "created_at": ctx.created_at.isoformat(),
                 "completed_at": ctx.completed_at.isoformat() if ctx.completed_at else None,
+                "metadata": {
+                    k: v for k, v in ctx.metadata.items()
+                    if not k.startswith("_")
+                },
             }
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -176,6 +180,7 @@ class StateManager:
                 error=data.get("error"),
                 created_at=datetime.fromisoformat(data["created_at"]),
                 completed_at=datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None,
+                metadata=data.get("metadata", {}),
             )
             # 恢复 extracted_records 到 metadata（跨会话恢复）
             records = data.get("extracted_records", [])

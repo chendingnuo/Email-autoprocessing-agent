@@ -78,6 +78,10 @@ class ReActEngine:
         ctx = context or self.state.create_context(user_request)
         callbacks = callbacks or []
 
+        # 防御：新任务（非恢复）开始时清理引擎级残留状态
+        if context is None:
+            self._data_store.clear()
+
         logger.info(f"[{ctx.task_id}] 开始执行ReAct循环, 最大步数={self.max_steps}")
 
         while ctx.current_step_count < self.max_steps:
@@ -107,26 +111,46 @@ class ReActEngine:
                 read_ids = ctx.metadata.get("read_email_ids", [])
                 completed_ids = ctx.metadata.get("completed_email_ids", [])
                 if read_ids and len(completed_ids) < len(read_ids):
-                    unprocessed = sorted(set(str(e) for e in read_ids) - set(str(e) for e in completed_ids))
-                    correction = (
-                        f"【提醒】email_read 返回了 {len(read_ids)} 封邮件"
-                        f"（ID: {', '.join(str(e) for e in read_ids)}），"
-                        f"但你目前只处理了 {len(completed_ids)} 封"
-                        f"（已完成: {', '.join(str(e) for e in completed_ids) or '无'}），"
-                        f"还有 {len(unprocessed)} 封未处理"
-                        f"（未处理: {', '.join(unprocessed)}）。\n\n"
-                        f"请继续处理剩余邮件！每封邮件都需要完成："
-                        f"提取信息 → 检查重复 → 登记数据 → 回复草稿。"
-                        f"全部处理完毕后，再给出最终回答。"
-                    )
-                    ctx.conversation_history.append(
-                        ConversationTurn(
-                            turn_index=len(ctx.conversation_history),
-                            prompt="",
-                            response=f"<observation>\n{correction}\n</observation>",
+                    # 死锁保护：追踪对同一组邮件连续提醒的次数
+                    reminder_key = f"{','.join(sorted(str(e) for e in read_ids))}|{','.join(sorted(str(e) for e in completed_ids))}"
+                    last_key = ctx.metadata.get("_reminder_key", "")
+                    reminder_count = ctx.metadata.get("_reminder_count", 0)
+                    if reminder_key == last_key:
+                        reminder_count += 1
+                    else:
+                        reminder_count = 1
+                    ctx.metadata["_reminder_key"] = reminder_key
+                    ctx.metadata["_reminder_count"] = reminder_count
+
+                    MAX_REMINDERS = 3
+                    if reminder_count >= MAX_REMINDERS:
+                        logger.warning(
+                            f"[{ctx.task_id}] FINAL_ANSWER 连续被提醒 {reminder_count} 次无进展，强制完成"
                         )
-                    )
-                    continue
+                        ctx.metadata.pop("_reminder_key", None)
+                        ctx.metadata.pop("_reminder_count", None)
+                        # 不 continue，继续执行下面的完成逻辑
+                    else:
+                        unprocessed = sorted(set(str(e) for e in read_ids) - set(str(e) for e in completed_ids))
+                        correction = (
+                            f"【提醒】email_read 返回了 {len(read_ids)} 封邮件"
+                            f"（ID: {', '.join(str(e) for e in read_ids)}），"
+                            f"但你目前只处理了 {len(completed_ids)} 封"
+                            f"（已完成: {', '.join(str(e) for e in completed_ids) or '无'}），"
+                            f"还有 {len(unprocessed)} 封未处理"
+                            f"（未处理: {', '.join(unprocessed)}）。\n\n"
+                            f"请继续处理剩余邮件！每封邮件都需要完成："
+                            f"提取信息 → 检查重复 → 登记数据 → 回复草稿。"
+                            f"全部处理完毕后，再给出最终回答。"
+                        )
+                        ctx.conversation_history.append(
+                            ConversationTurn(
+                                turn_index=len(ctx.conversation_history),
+                                prompt="",
+                                response=f"<observation>\n{correction}\n</observation>",
+                            )
+                        )
+                        continue
 
                 # 检测最终答案中是否包含需要人工介入的标记
                 fa = step.final_answer[:2000]
@@ -170,13 +194,32 @@ class ReActEngine:
             return self.system_prompt_generator(self.tools, ctx)
 
         tool_descs = self.tools.generate_tool_descriptions()
+
+        # 检测用户意图：只读任务 vs 处理任务
+        read_only_keywords = [
+            "列出", "查看", "不需要处理", "不处理", "只读",
+            "摘要", "概览", "仅显示", "不用处理", "不用回复",
+            "不需要做任何处理", "不回复",
+        ]
+        is_read_only = any(kw in ctx.user_request for kw in read_only_keywords)
+
         extra_rules = [
             "从邮件或附件中提取出结构化信息后，必须先调用 data_store 工具保存，"
             "否则数据在后续步骤中可能丢失。",
-            "如果 email_read 读取到多封邮件，必须逐封处理完所有邮件，"
-            "不得只处理第一封就结束。每处理完一封，继续处理下一封，直到全部处理完毕后再给出最终回答。"
-            "示例：email_read 返回了5封邮件 → 处理第1封 → 继续处理第2封 → ... → 全部处理完 → final_answer",
         ]
+
+        if is_read_only:
+            extra_rules.append(
+                "注意：用户当前请求明确要求只查看/列清单，不要对邮件进行后续处理"
+                "（不调用 doc_parse_attachment、不检查重复、不写入 Excel、不生成回复草稿）。"
+                "只需列出邮件信息，直接给出 final_answer 即可。"
+            )
+        else:
+            extra_rules.append(
+                "如果 email_read 读取到多封邮件，必须逐封处理完所有邮件，"
+                "不得只处理第一封就结束。每处理完一封，继续处理下一封，直到全部处理完毕后再给出最终回答。"
+                "示例：email_read 返回了5封邮件 → 处理第1封 → 继续处理第2封 → ... → 全部处理完 → final_answer"
+            )
 
         if ctx.extracted_data:
             extra_rules.append(
