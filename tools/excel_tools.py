@@ -161,6 +161,28 @@ class ExcelTools:
                             "action_required": "该记录已存在，无需重复录入。如需更新请联系管理员。",
                         }, ensure_ascii=False)
 
+            # ── 自动补全字段（代码层面保证数据完整性）─────
+            # 1. 序号：自动按已有行数递增
+            if "序号" in new_row.columns:
+                existing_count = len(existing_data) if existing_data is not None else 0
+                seq = existing_count + 1
+                new_row["序号"] = seq
+                record["序号"] = seq
+
+            # 2. 立项通过日期：若未填则自动使用当天日期
+            if "立项通过日期" in new_row.columns:
+                val = str(new_row["立项通过日期"].iloc[0]).strip()
+                if not val or val in ("nan", ""):
+                    from datetime import date
+                    today_str = date.today().strftime("%Y-%m-%d")
+                    new_row["立项通过日期"] = today_str
+                    record["立项通过日期"] = today_str
+
+            # 3. 是否已发送回件：生成回复草稿即视为"是"
+            if "是否已发送回件" in new_row.columns:
+                new_row["是否已发送回件"] = "是"
+                record["是否已发送回件"] = "是"
+
             # ── 合并数据 ─────────────────────────────────
             if existing_data is not None:
                 # 对齐列
