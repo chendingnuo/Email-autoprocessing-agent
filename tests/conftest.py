@@ -32,16 +32,23 @@ def auto_clean_cache(request):
                     continue
 
                 # 从头扫描每一行，找到包含表头关键词的行即停止
+                # 注意：使用单元格级别匹配而非拼接文本匹配，避免描述性文字中
+                # 意外包含关键词（如"系统将自动生成序号"中的"序号"）导致误判。
                 header_row = 1  # 兜底：至少保留第1行
                 header_keywords = ("姓名*", "立项通过日期", "荣誉时数值*", "活动名称", "序号")
                 for r in range(1, max_r + 1):
-                    row_text_parts = []
+                    matched_cells = 0
                     for c in range(1, max_c + 1):
                         val = ws.cell(row=r, column=c).value
                         if val is not None:
-                            row_text_parts.append(str(val))
-                    row_text = "".join(row_text_parts)
-                    if any(kw in row_text for kw in header_keywords):
+                            val_str = str(val).strip()
+                            # 表头单元格通常是简短的关键词（≤20 字符），
+                            # 而说明性文字较长，排除掉以避免误匹配
+                            if len(val_str) <= 20:
+                                if any(kw in val_str for kw in header_keywords):
+                                    matched_cells += 1
+                    # 至少匹配到 2 个表头关键词才认为是表头行
+                    if matched_cells >= 2:
                         header_row = r
                         break
 
