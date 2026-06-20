@@ -26,39 +26,77 @@ def auto_clean_cache(request):
             import openpyxl
             wb = openpyxl.load_workbook(filepath)
             for ws in wb.worksheets:
-                # 找到第一个空行（表头后的第一个空行即数据边界）
-                max_row = ws.max_row or 0
-                has_data = False
-                for row in range(ws.max_row or 1, 0, -1):
-                    if any(ws.cell(row=row, column=c).value for c in range(1, (ws.max_column or 1) + 1)):
-                        has_data = True
+                max_r = ws.max_row or 0
+                max_c = ws.max_column or 0
+                if max_r == 0:
+                    continue
+
+                # 从头扫描每一行，找到包含表头关键词的行即停止
+                header_row = 1  # 兜底：至少保留第1行
+                header_keywords = ("姓名*", "立项通过日期", "荣誉时数值*", "活动名称", "序号")
+                for r in range(1, max_r + 1):
+                    row_text_parts = []
+                    for c in range(1, max_c + 1):
+                        val = ws.cell(row=r, column=c).value
+                        if val is not None:
+                            row_text_parts.append(str(val))
+                    row_text = "".join(row_text_parts)
+                    if any(kw in row_text for kw in header_keywords):
+                        header_row = r
                         break
-                if has_data:
-                    # 找到表头行（最后一个非空行的上一行就是表头）
-                    # 实际上：保留第1行标题 + 可能第2行说明 + 表头行
-                    # 从表头行+1开始清到末尾
-                    header_row = 1
-                    # 检查是否有标题行+说明行模式
-                    for r in range(1, min(max_row + 1, 5)):
-                        row_vals = [ws.cell(row=r, column=c).value for c in range(1, min((ws.max_column or 1) + 1, 3))]
-                        # 如果某行包含"表头"特征词或列名关键词，这就是表头行
-                        text = "".join(str(v) for v in row_vals if v)
-                        if any(kw in text for kw in ("姓名*", "立项通过日期", "荣誉时数值*", "活动名称")):
-                            header_row = r
-                            break
-                    # 清除表头之后的所有行
-                    for row in range(header_row + 1, max_row + 1):
-                        for col in range(1, (ws.max_column or 1) + 1):
-                            ws.cell(row=row, column=col).value = None
+
+                # 删除表头行之后的所有数据行（真正删除，而非设 None）
+                if max_r > header_row:
+                    ws.delete_rows(header_row + 1, max_r - header_row)
+
             wb.save(filepath)
         except Exception as e:
+            import traceback
             print(f"  [clean_cache] 清理 Excel 数据失败 {filepath}: {e}")
+            traceback.print_exc()
 
     def cleanup():
+        import logging as _logging
+
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         data_dir = os.path.join(project_root, "data")
 
-        # 清理运行时目录（日志、任务状态、附件缓存等）
+        # ── 0. 先释放所有 logging FileHandler 持有的文件句柄 ──
+        #     Windows 上打开的文件无法被 os.unlink/shtuil.rmtree 删除，
+        #     必须在清理目录之前关闭 handler。
+        root_logger = _logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            if isinstance(handler, _logging.FileHandler):
+                handler.close()
+                root_logger.removeHandler(handler)
+
+        # ── 1. 清理 Python 字节码缓存 ──────────────────
+        import glob as _glob
+
+        # 删除所有 __pycache__ 目录
+        for pycache in _glob.glob(os.path.join(project_root, "**", "__pycache__"), recursive=True):
+            try:
+                shutil.rmtree(pycache)
+            except Exception as e:
+                print(f"  [clean_cache] 清理失败 {pycache}: {e}")
+
+        # 删除所有 .pyc/.pyo 编译文件
+        for pattern in ("**/*.pyc", "**/*.pyo"):
+            for fpath in _glob.glob(os.path.join(project_root, pattern), recursive=True):
+                try:
+                    os.unlink(fpath)
+                except Exception as e:
+                    print(f"  [clean_cache] 清理失败 {fpath}: {e}")
+
+        # 删除 .pytest_cache 目录
+        pytest_cache = os.path.join(project_root, ".pytest_cache")
+        if os.path.isdir(pytest_cache):
+            try:
+                shutil.rmtree(pytest_cache)
+            except Exception as e:
+                print(f"  [clean_cache] 清理失败 {pytest_cache}: {e}")
+
+        # ── 2. 清理运行时目录（日志、任务状态、附件缓存等）──
         runtime_dirs = [
             os.path.join(data_dir, "logs"),
             os.path.join(data_dir, "tasks"),
@@ -77,8 +115,7 @@ def auto_clean_cache(request):
                     except Exception as e:
                         print(f"  [clean_cache] 清理失败 {fpath}: {e}")
 
-        # 清理 Excel 模板中的数据行（保留模板文件本身）
-        import glob as _glob
+        # ── 3. 清理 Excel 模板中的数据行（保留模板文件本身）──
         for fpath in _glob.glob(os.path.join(data_dir, "*.xlsx")):
             _clear_excel_data(fpath)
 
